@@ -85,7 +85,7 @@ static inline uint32_t crzy64_unpack(uint32_t a) {
 }
 
 #if CRZY64_FAST64
-/* 24x2 -> 12x4 */
+/* 24x2 -> 6x8 */
 static inline uint64_t crzy64_unpack64(uint64_t a) {
 	// return crzy64_unpack(a) | (uint64_t)crzy64_unpack(a >> 32) << 32;
 	uint64_t h, l, m = ~0xff000000llu;
