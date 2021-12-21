@@ -2,7 +2,7 @@ APPNAME := crzy64
 SRCNAME := main.c
 
 MFLAGS := -march=native
-CFLAGS := -Wall -Wextra -pedantic -O3 $(MFLAGS)
+CFLAGS := -Wall -Wextra -pedantic -O2 $(MFLAGS)
 SFLAGS := -fno-asynchronous-unwind-tables -masm=intel
 
 .PHONY: clean all check bench
