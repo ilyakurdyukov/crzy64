@@ -84,29 +84,29 @@ static inline uint32_t crzy64_unpack(uint32_t a) {
 	return b & 0x3f3f3f3f;
 }
 
-#define CORE1(a) ((((a) >> 5) + (a) + (((a) - 9) & -((a) >> 6))) & 63)
+#define CRZY64_DEC1(a) ((((a) >> 5) + (a) + (((a) - 9) & -((a) >> 6))) & 63)
+
+#define R4(x) (x * 0x01010101)
+#define R8(x) (x * 0x0101010101010101)
+#define CRZY64_ENC(R) do { \
+	a = (a + R(5)) & R(63); \
+	b = a & R(1); \
+	c = R(127) + (((a + R(12)) >> 6) & R(1)); \
+	a += (((b << 5) + R(71) - ((a + b) >> 1)) & c) - R(6); \
+} while (0)
 
 CRZY64_ATTR
 size_t crzy64_encode(uint8_t *d, const uint8_t *s, size_t n) {
-	uint8_t *d0 = d; uint32_t a;
-#if 0
-	uint8_t tab[64]; int i;
-	const char *set =
-		"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789./";
-	for (i = 0; i < 64; i++) a = set[i], dict[CORE1(a)] = a;
-	// fprintf(stderr, "%.64s\n", dict);
-#else
-	static const uint8_t tab[64] =
-		"cDdEeFfGgHhIiJjKkLlMmNnOoPpQqRrSsTtUuVvWwXxYyZz./0123456789AaBbC";
-#endif
+	uint8_t *d0 = d; uint32_t a, b, c;
 
 	if (n >= 3) do {
 		a = s[0] | s[1] << 8 | s[2] << 16;
 		a = crzy64_unpack(a);
-		d[0] = tab[255 & a];
-		d[1] = tab[255 & a >> 8];
-		d[2] = tab[255 & a >> 16];
-		d[3] = tab[255 & a >> 24];
+		CRZY64_ENC(R4);
+		d[0] = a;
+		d[1] = a >> 8;
+		d[2] = a >> 16;
+		d[3] = a >> 24;
 		s += 3; n -= 3; d += 4;
 	} while (n >= 3);
 
@@ -114,22 +114,21 @@ size_t crzy64_encode(uint8_t *d, const uint8_t *s, size_t n) {
 		a = s[0];
 		if (n > 1) a |= s[1] << 8;
 		a = crzy64_unpack(a);
-		d[0] = tab[255 & a];
-		d[1] = tab[255 & a >> 8];
-		if (n > 1) d[2] = tab[255 & a >> 16];
+		CRZY64_ENC(R4);
+		d[0] = a;
+		d[1] = a >> 8;
+		if (n > 1) d[2] = a >> 16;
 		d += n + 1;
 	}
 
 	return d - d0;
 }
 
-#define R4(x) (x * 0x01010101)
-#define R8(x) (x * 0x0101010101010101)
-#define CORE(a, R) (((((a) >> 5) & R(3)) + \
+#define CRZY64_DEC(a, R) (((((a) >> 5) & R(3)) + \
 	(a) + (((a) - R(9)) & (R(64) - (((a) >> 6) & R(1))))) & R(63))
-#define CORE4(a) CORE(a, R4)
-#define CORE8(a) CORE(a, R8)
-#define PACK(a) ((a) ^ (a) >> 6)
+#define CRZY64_DEC4(a) CRZY64_DEC(a, R4)
+#define CRZY64_DEC8(a) CRZY64_DEC(a, R8)
+#define CRZY64_PACK(a) ((a) ^ (a) >> 6)
 
 CRZY64_ATTR
 size_t crzy64_decode(uint8_t *d, const uint8_t *s, size_t n) {
@@ -207,14 +206,14 @@ size_t crzy64_decode(uint8_t *d, const uint8_t *s, size_t n) {
 #if 0 // CRZY64_UNALIGNED && !CRZY64_VEC
 	if (n >= 16) do {
 		uint64_t a = *(uint64_t*)s, t;
-		a = CORE8(a);
-		a = PACK(a);
+		a = CRZY64_DEC8(a);
+		a = CRZY64_PACK(a);
 		*(uint32_t*)d = ((uint32_t)a & 0xffffff)
 				| ((uint32_t)(a >> 8) & ~0xffffff);
 		t = a >> 40 & 0xffff;
 		a = *(uint64_t*)(s + 8);
-		a = CORE8(a);
-		a = PACK(a);
+		a = CRZY64_DEC8(a);
+		a = CRZY64_PACK(a);
 		*(uint32_t*)(d + 4) = a << 16 | t;
 		*(uint32_t*)(d + 8) = ((uint32_t)(a >> 24) & ~0xff)
 				| ((uint32_t)a >> 16 & 0xff);
@@ -229,8 +228,8 @@ size_t crzy64_decode(uint8_t *d, const uint8_t *s, size_t n) {
 		uint64_t a = s[0] | s[1] << 8 | s[2] << 16 | s[3] << 24;
 		a |= (uint64_t)(s[4] | s[5] << 8 | s[6] << 16 | s[7] << 24) << 32;
 #endif
-		a = CORE8(a);
-		a = PACK(a);
+		a = CRZY64_DEC8(a);
+		a = CRZY64_PACK(a);
 #if CRZY64_UNALIGNED
 		*(uint32_t*)d = ((uint32_t)a & 0xffffff)
 				| ((uint32_t)(a >> 8) & ~0xffffff);
@@ -251,8 +250,8 @@ size_t crzy64_decode(uint8_t *d, const uint8_t *s, size_t n) {
 		uint64_t a = s[0] | s[1] << 8 | s[2] << 16 | s[3] << 24;
 		a |= (uint64_t)(s[4] | s[5] << 8) << 32;
 		if (n > 6) a |= (uint64_t)s[6] << 48;
-		a = CORE8(a);
-		a = PACK(a);
+		a = CRZY64_DEC8(a);
+		a = CRZY64_PACK(a);
 		d[0] = a;
 		d[1] = a >> 8;
 		d[2] = a >> 16;
@@ -263,8 +262,8 @@ size_t crzy64_decode(uint8_t *d, const uint8_t *s, size_t n) {
 		uint32_t a = s[0] | s[1] << 8;
 		if (n > 2) a |= s[2] << 16;
 		if (n > 3) a |= s[3] << 24;
-		a = CORE4(a);
-		a = PACK(a);
+		a = CRZY64_DEC4(a);
+		a = CRZY64_PACK(a);
 		d[0] = a;
 		if (n > 2) d[1] = a >> 8;
 		if (n > 3) d[2] = a >> 16;
@@ -277,8 +276,8 @@ size_t crzy64_decode(uint8_t *d, const uint8_t *s, size_t n) {
 #else
 		uint32_t a = s[0] | s[1] << 8 | s[2] << 16 | s[3] << 24;
 #endif
-		a = CORE4(a);
-		a = PACK(a);
+		a = CRZY64_DEC4(a);
+		a = CRZY64_PACK(a);
 #if CRZY64_UNALIGNED
 		*(uint16_t*)d = a;
 		d[2] = a >> 16;
@@ -293,8 +292,8 @@ size_t crzy64_decode(uint8_t *d, const uint8_t *s, size_t n) {
 	if (n > 1) {
 		uint32_t a = s[0] | s[1] << 8;
 		if (n > 2) a |= s[2] << 16;
-		a = CORE4(a);
-		a = PACK(a);
+		a = CRZY64_DEC4(a);
+		a = CRZY64_PACK(a);
 		d[0] = a;
 		if (n > 2) d[1] = a >> 8;
 		d += n - 1;

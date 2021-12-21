@@ -9,7 +9,7 @@ But it's bound to ASCII character codes and will not work with other encodings l
 
 There is a difference with base64 as it uses "./" instead of "+/" and the data is also pre-shuffled to speed up decoding.
 
-The encoding stage isn't optimized yet.
+The encoding stage isn't fully optimized yet.
 
 ### Build
 
