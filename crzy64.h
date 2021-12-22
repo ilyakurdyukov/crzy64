@@ -307,7 +307,8 @@ size_t crzy64_decode(uint8_t *d, const uint8_t *s, size_t n) {
 #ifdef __SSSE3__
 		__m128i idx = _mm_setr_epi8(0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14, -1, -1, -1, -1);
 #else
-		__m128i mask = _mm_set1_epi32(0xffffff);
+		/* xx0001x0011x0111 */
+		__m128i mask = _mm_setr_epi32(0xffffff, 0xffffff, 0xff0000, 0);
 #endif
 		do {
 			a = _mm_loadu_si128((const __m128i*)s);
@@ -322,17 +323,13 @@ size_t crzy64_decode(uint8_t *d, const uint8_t *s, size_t n) {
 			a = _mm_bsrli_si128(a, 8);
 			*(uint32_t*)(d + 8) = _mm_cvtsi128_si32(a);
 #else
-			a = _mm_and_si128(a, mask);
-			{
-				uint32_t x, y;
-				x = _mm_cvtsi128_si32(a); a = _mm_bsrli_si128(a, 4);
-				y = _mm_cvtsi128_si32(a); a = _mm_bsrli_si128(a, 4);
-				*(uint32_t*)d = x | y << 24;
-				x = _mm_cvtsi128_si32(a); a = _mm_bsrli_si128(a, 4);
-				*(uint32_t*)(d + 4) = y >> 8 | x << 16;
-				y = _mm_cvtsi128_si32(a);
-				*(uint32_t*)(d + 8) = y << 8 | x >> 16;
-			}
+			b = _mm_andnot_si128(mask, _mm_bsrli_si128(a, 1));
+			a = _mm_or_si128(_mm_and_si128(a, mask), b);
+			*(uint32_t*)d = _mm_cvtsi128_si32(a);
+			b = _mm_bsrli_si128(a, 5);
+			c = _mm_bsrli_si128(a, 10);
+			*(uint32_t*)(d + 4) = _mm_cvtsi128_si32(b);
+			*(uint32_t*)(d + 8) = _mm_cvtsi128_si32(c);
 #endif
 			s += 16; n -= 16; d += 12;
 		} while (n >= 16);
