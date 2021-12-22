@@ -129,11 +129,11 @@ size_t crzy64_encode(uint8_t *d, const uint8_t *s, size_t n) {
 			a = _mm_unpacklo_epi64(a, b);
 			a = _mm_shuffle_epi8(a, idx);
 #else
-			b = _mm_cvtsi32_si128(*(uint32_t*)s);
-			c = _mm_cvtsi32_si128(*(uint32_t*)(s + 3));
+			b = _mm_cvtsi32_si128(*(const uint32_t*)s);
+			c = _mm_cvtsi32_si128(*(const uint32_t*)(s + 3));
 			a = _mm_unpacklo_epi32(b, c);
-			b = _mm_cvtsi32_si128(*(uint32_t*)(s + 6));
-			c = _mm_cvtsi32_si128(*(uint32_t*)(s + 8));
+			b = _mm_cvtsi32_si128(*(const uint32_t*)(s + 6));
+			c = _mm_cvtsi32_si128(*(const uint32_t*)(s + 8));
 			b = _mm_unpacklo_epi32(b, _mm_srli_epi32(c, 8));
 			a = _mm_unpacklo_epi64(a, b);
 #endif
@@ -163,7 +163,7 @@ size_t crzy64_encode(uint8_t *d, const uint8_t *s, size_t n) {
 	if (n >= 6) do {
 		uint64_t a, b, c;
 #if CRZY64_UNALIGNED
-		a = *(uint32_t*)s | (uint64_t)*(uint32_t*)(s + 2) << 24;
+		a = *(const uint32_t*)s | (uint64_t)*(const uint32_t*)(s + 2) << 24;
 #else
 		a = s[0] | s[1] << 8 | s[2] << 16;
 		a |= (uint64_t)(s[3] | s[4] << 8 | s[5] << 16) << 32;
@@ -297,7 +297,7 @@ size_t crzy64_decode(uint8_t *d, const uint8_t *s, size_t n) {
 #if CRZY64_FAST64
 #if 0 // CRZY64_UNALIGNED && !CRZY64_VEC
 	if (n >= 16) do {
-		uint64_t a = *(uint64_t*)s, t;
+		uint64_t a = *(const uint64_t*)s, t;
 		a = CRZY64_DEC8(a);
 		a = CRZY64_PACK(a);
 		*(uint32_t*)d = ((uint32_t)a & 0xffffff)
@@ -315,7 +315,7 @@ size_t crzy64_decode(uint8_t *d, const uint8_t *s, size_t n) {
 
 	if (n >= 8) do {
 #if CRZY64_UNALIGNED
-		uint64_t a = *(uint64_t*)s;
+		uint64_t a = *(const uint64_t*)s;
 #else
 		uint64_t a = s[0] | s[1] << 8 | s[2] << 16 | s[3] << 24;
 		a |= (uint64_t)(s[4] | s[5] << 8 | s[6] << 16 | s[7] << 24) << 32;
@@ -364,7 +364,7 @@ size_t crzy64_decode(uint8_t *d, const uint8_t *s, size_t n) {
 #else
 	if (n >= 4) do {
 #if CRZY64_UNALIGNED
-		uint32_t a = *(uint32_t*)s;
+		uint32_t a = *(const uint32_t*)s;
 #else
 		uint32_t a = s[0] | s[1] << 8 | s[2] << 16 | s[3] << 24;
 #endif

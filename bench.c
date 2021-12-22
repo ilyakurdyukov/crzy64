@@ -34,7 +34,7 @@ int main(int argc, char **argv) {
 #else
 	const char *vec_type = "none";
 #endif
-	size_t i, n = 100, n2;
+	size_t i, n = 100, n1, n2;
 	uint8_t *buf, *out;
 
 	if (argc > 1) n = atoi(argv[1]);
@@ -43,24 +43,24 @@ int main(int argc, char **argv) {
 	printf("vector: %s\nfast64: %s\nsize: %u MB\n\n",
 			vec_type, CRZY64_FAST64 ? "yes" : "no", (int)n);
 
-	n <<= 20;
-	n2 = (n + 2) / 3 << 2;
+	n1 = n << 20;
+	n2 = (n1 * 4 + 2) / 3;
 
-	if (!(buf = malloc(n + n2))) return 1;
-	out = buf + n;
-	for (i = 0; i < n + n2; i++) buf[i] = i ^ 0x55;
+	if (!(buf = malloc(n1 + n2))) return 1;
+	out = buf + n1;
+	for (i = 0; i < n1 + n2; i++) buf[i] = i ^ 0x55;
 
 #define BENCH(name, code) \
 	for (i = 0; i < 5; i++) { \
 		int64_t t = get_time_usec(); \
 		code; \
 		t = get_time_usec() - t; \
-		printf(name ": %.3fms\n", t * 0.001); \
+		printf(name ": %.3fms (%.2f MB/s)\n", t * 0.001, n * 1e6 / t); \
 	} \
 	putchar('\n');
 
-	BENCH("memcpy", memcpy(out, buf, n))
-	BENCH("encode", crzy64_encode(out, buf, n))
+	BENCH("memcpy", memcpy(out, buf, n1))
+	BENCH("encode", crzy64_encode(out, buf, n1))
 	BENCH("decode", crzy64_decode(buf, out, n2))
 #undef BENCH
 }
