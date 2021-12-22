@@ -32,7 +32,7 @@ int main() {
 			ERR("invalid encoded size at length %d\n", i);
 		for (j = 0; j < n; j++)
 			if (!valid[buf[j]])
-				ERR("invaid character at length %d\n", i);
+				ERR("invalid character at length %d\n", i);
 		n = crzy64_decode(out, buf, n);
 		if (n != i)
 			ERR("invalid decoded size at length %d\n", i);

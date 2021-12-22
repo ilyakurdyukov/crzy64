@@ -99,8 +99,8 @@ static inline uint64_t crzy64_unpack64(uint64_t a) {
 
 #define CRZY64_DEC1(a) ((((a) >> 5) + (a) + (((a) - 9) & -((a) >> 6))) & 63)
 
-#define R4(x) (x * 0x01010101)
-#define R8(x) (x * 0x0101010101010101)
+#define CRZY64_REP4(x) (x * 0x01010101)
+#define CRZY64_REP8(x) (x * 0x0101010101010101)
 #define CRZY64_ENC(R) do { \
 	a = (a + R(5)) & R(63); \
 	b = a & R(1); \
@@ -112,11 +112,55 @@ CRZY64_ATTR
 size_t crzy64_encode(uint8_t *d, const uint8_t *s, size_t n) {
 	uint8_t *d0 = d; uint32_t a, b, c;
 
-#if CRZY64_VEC && defined(__SSE2__)
+#if CRZY64_VEC && CRZY64_NEON
+	if (n >= 12) {
+		uint8x16_t c1 = vdupq_n_u8(1), c5 = vdupq_n_u8(5);
+		uint8x16_t c52 = vdupq_n_u8(52), c71 = vdupq_n_u8(71);
+		uint8x16_t c63 = vdupq_n_u8(63), c6 = vdupq_n_u8(6), a, b, c;
+		uint8x8_t idx0 = vcreate_u8(0xff050403ff020100);
+#ifdef __aarch64__
+		uint8x8_t idx1 = vcreate_u8(0xff0f0e0dff0c0b0a);
+		uint8x16_t idx = vcombine_u8(idx0, idx1);
+#else
+		uint8x8_t idx1 = vcreate_u8(0xff070605ff040302);
+#endif
+		uint32x4_t mh = vdupq_n_u32(0xfcf0c0), x, y, z;
+		uint32x4_t ml = vdupq_n_u32(0x030f3f);
+		do {
+#ifdef __aarch64__
+			a = vcombine_u8(vld1_u8(s), vld1_u8(s + 4));
+			a = vqtbl1q_u8(a, idx);
+#else
+			a = vcombine_u8(vtbl1_u8(vld1_u8(s), idx0),
+					vtbl1_u8(vld1_u8(s + 4), idx1));
+#endif
+			/* unpack */
+			x = vreinterpretq_u32_u8(a);
+			z = vandq_u32(x, mh);
+			y = veorq_u32(z, vshlq_n_u32(z, 6));
+			y = veorq_u32(y, vshlq_n_u32(z, 12));
+			z = vandq_u32(x, ml);
+			x = veorq_u32(z, vshrq_n_u32(z, 6));
+			x = veorq_u32(x, vshrq_n_u32(z, 12));
+			x = veorq_u32(x, vshlq_n_u32(y, 6));
+			a = vreinterpretq_u8_u32(x);
+			/* core */
+			a = vandq_u8(vaddq_u8(a, c5), c63);
+			b = vandq_u8(a, c1);
+			c = vaddq_u8(vshlq_n_u8(b, 5), c71);
+			c = vsubq_u8(c, vshrq_n_u8(vaddq_u8(a, b), 1));
+			c = vandq_u8(c, vcltq_u8(a, c52));
+			a = vsubq_u8(a, c6);
+			a = vaddq_u8(a, c);
+			vst1q_u8(d, a);
+			s += 12; n -= 12; d += 16;
+		} while (n >= 12);
+	}
+#elif CRZY64_VEC && defined(__SSE2__)
 	if (n >= 12) {
 		__m128i c1 = _mm_set1_epi8(1), c5 = _mm_set1_epi8(5);
 		__m128i c52 = _mm_set1_epi8(52), c71 = _mm_set1_epi8(71);
-		__m128i c63 = _mm_set1_epi8(63), a, b, c;
+		__m128i c63 = _mm_set1_epi8(63), c6 = _mm_set1_epi8(6), a, b, c;
 #ifdef __SSSE3__
 		__m128i idx = _mm_setr_epi8(0, 1, 2, -1, 3, 4, 5, -1, 6, 7, 8, -1, 9, 10, 11, -1);
 #endif
@@ -151,7 +195,7 @@ size_t crzy64_encode(uint8_t *d, const uint8_t *s, size_t n) {
 			c = _mm_add_epi8(_mm_slli_epi16(b, 5), c71);
 			c = _mm_sub_epi8(c, _mm_srli_epi16(_mm_add_epi8(a, b), 1));
 			c = _mm_and_si128(c, _mm_cmpgt_epi8(c52, a));
-			a = _mm_sub_epi8(a, _mm_set1_epi8(6));
+			a = _mm_sub_epi8(a, c6);
 			a = _mm_add_epi8(a, c);
 			_mm_storeu_si128((__m128i*)d, a);
 			s += 12; n -= 12; d += 16;
@@ -169,7 +213,7 @@ size_t crzy64_encode(uint8_t *d, const uint8_t *s, size_t n) {
 		a |= (uint64_t)(s[3] | s[4] << 8 | s[5] << 16) << 32;
 #endif
 		a = crzy64_unpack64(a);
-		CRZY64_ENC(R8);
+		CRZY64_ENC(CRZY64_REP8);
 #if CRZY64_UNALIGNED
 		*(uint64_t*)d = a;
 #else
@@ -190,7 +234,7 @@ size_t crzy64_encode(uint8_t *d, const uint8_t *s, size_t n) {
 	if (n >= 3) do {
 		a = s[0] | s[1] << 8 | s[2] << 16;
 		a = crzy64_unpack(a);
-		CRZY64_ENC(R4);
+		CRZY64_ENC(CRZY64_REP4);
 #if CRZY64_UNALIGNED
 		*(uint32_t*)d = a;
 #else
@@ -206,7 +250,7 @@ size_t crzy64_encode(uint8_t *d, const uint8_t *s, size_t n) {
 		a = s[0];
 		if (n > 1) a |= s[1] << 8;
 		a = crzy64_unpack(a);
-		CRZY64_ENC(R4);
+		CRZY64_ENC(CRZY64_REP4);
 		d[0] = a;
 		d[1] = a >> 8;
 		if (n > 1) d[2] = a >> 16;
@@ -218,8 +262,8 @@ size_t crzy64_encode(uint8_t *d, const uint8_t *s, size_t n) {
 
 #define CRZY64_DEC(a, R) (((((a) >> 5) & R(3)) + \
 	(a) + (((a) - R(9)) & (R(64) - (((a) >> 6) & R(1))))) & R(63))
-#define CRZY64_DEC4(a) CRZY64_DEC(a, R4)
-#define CRZY64_DEC8(a) CRZY64_DEC(a, R8)
+#define CRZY64_DEC4(a) CRZY64_DEC(a, CRZY64_REP4)
+#define CRZY64_DEC8(a) CRZY64_DEC(a, CRZY64_REP8)
 #define CRZY64_PACK(a) ((a) ^ (a) >> 6)
 
 CRZY64_ATTR
@@ -239,7 +283,7 @@ size_t crzy64_decode(uint8_t *d, const uint8_t *s, size_t n) {
 #endif
 		do {
 			a = vld1q_u8(s);
-			b = vandq_u8(vsubq_u8(a, c9), vcleq_u8(c63, a));
+			b = vandq_u8(vsubq_u8(a, c9), vcltq_u8(c63, a));
 			a = vaddq_u8(vaddq_u8(a, vshrq_n_u8(a, 5)), b);
 			a = vandq_u8(a, c63);
 			c.a = vreinterpretq_u32_u8(a);
