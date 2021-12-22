@@ -27,6 +27,9 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifndef CRZY64_H
+#define CRZY64_H
+
 #include <stdint.h>
 
 #ifndef CRZY64_ATTR
@@ -42,15 +45,23 @@
 #endif
 
 #ifndef CRZY64_UNALIGNED
-#if defined(__i386__) || defined(__x86_64__) || defined(__aarch64__)
+#if defined(__i386__) || defined(__x86_64__) || defined(__aarch64__) || defined(__e2k__)
 #define CRZY64_UNALIGNED 1
 #else
 #define CRZY64_UNALIGNED 0
 #endif
 #endif
 
+#if defined(__e2k__) && defined(__LCC__)
+#define CRZY64_E2K_LCC
+#endif
+
 #ifndef CRZY64_VEC
+#if !defined(CRZY64_E2K_LCC)
 #define CRZY64_VEC 1
+#else
+#define CRZY64_VEC 0
+#endif
 #endif
 
 #ifndef CRZY64_NEON
@@ -59,6 +70,10 @@
 #else
 #define CRZY64_NEON 0
 #endif
+#endif
+
+#ifndef CRZY64_RESTRICT
+#define CRZY64_RESTRICT restrict
 #endif
 
 #if CRZY64_VEC
@@ -109,7 +124,8 @@ static inline uint64_t crzy64_unpack64(uint64_t a) {
 } while (0)
 
 CRZY64_ATTR
-size_t crzy64_encode(uint8_t *d, const uint8_t *s, size_t n) {
+size_t crzy64_encode(uint8_t *CRZY64_RESTRICT d,
+		const uint8_t *CRZY64_RESTRICT s, size_t n) {
 	uint8_t *d0 = d; uint32_t a, b, c;
 
 #if CRZY64_VEC && CRZY64_NEON
@@ -206,7 +222,7 @@ size_t crzy64_encode(uint8_t *d, const uint8_t *s, size_t n) {
 #if CRZY64_FAST64
 	if (n >= 6) do {
 		uint64_t a, b, c;
-#if CRZY64_UNALIGNED
+#if CRZY64_UNALIGNED && !defined(CRZY64_E2K_LCC)
 		a = *(const uint32_t*)s | (uint64_t)*(const uint32_t*)(s + 2) << 24;
 #else
 		a = s[0] | s[1] << 8 | s[2] << 16;
@@ -267,7 +283,8 @@ size_t crzy64_encode(uint8_t *d, const uint8_t *s, size_t n) {
 #define CRZY64_PACK(a) ((a) ^ (a) >> 6)
 
 CRZY64_ATTR
-size_t crzy64_decode(uint8_t *d, const uint8_t *s, size_t n) {
+size_t crzy64_decode(uint8_t *CRZY64_RESTRICT d,
+		const uint8_t *CRZY64_RESTRICT s, size_t n) {
 	uint8_t *d0 = d;
 #if CRZY64_VEC && CRZY64_NEON
 	if (n >= 16) {
@@ -336,20 +353,17 @@ size_t crzy64_decode(uint8_t *d, const uint8_t *s, size_t n) {
 	}
 #endif
 #if CRZY64_FAST64
-#if 0 // CRZY64_UNALIGNED && !CRZY64_VEC
+#if !CRZY64_VEC && CRZY64_UNALIGNED && !defined(CRZY64_E2K_LCC)
 	if (n >= 16) do {
-		uint64_t a = *(const uint64_t*)s, t;
-		a = CRZY64_DEC8(a);
-		a = CRZY64_PACK(a);
+		uint64_t a = *(const uint64_t*)s, b;
+		b = *(const uint64_t*)(s + 8);
+		a = CRZY64_DEC8(a); a = CRZY64_PACK(a);
+		b = CRZY64_DEC8(b); b = CRZY64_PACK(b);
 		*(uint32_t*)d = ((uint32_t)a & 0xffffff)
 				| ((uint32_t)(a >> 8) & ~0xffffff);
-		t = a >> 40 & 0xffff;
-		a = *(uint64_t*)(s + 8);
-		a = CRZY64_DEC8(a);
-		a = CRZY64_PACK(a);
-		*(uint32_t*)(d + 4) = a << 16 | t;
-		*(uint32_t*)(d + 8) = ((uint32_t)(a >> 24) & ~0xff)
-				| ((uint32_t)a >> 16 & 0xff);
+		*(uint32_t*)(d + 4) = b << 16 | (a >> 40 & 0xffff);
+		*(uint32_t*)(d + 8) = ((uint32_t)(b >> 24) & ~0xff)
+				| ((uint32_t)b >> 16 & 0xff);
 		s += 16; n -= 16; d += 12;
 	} while (n >= 16);
 #endif
@@ -364,9 +378,16 @@ size_t crzy64_decode(uint8_t *d, const uint8_t *s, size_t n) {
 		a = CRZY64_DEC8(a);
 		a = CRZY64_PACK(a);
 #if CRZY64_UNALIGNED
+#ifdef CRZY64_E2K_LCC
+		a = __builtin_e2k_insfd(a, 8 | 24 << 6, a);
+		*(uint16_t*)d = a;
+		*(uint16_t*)(d + 2) = a >> 16;
+		*(uint16_t*)(d + 4) = a >> 32;
+#else
 		*(uint32_t*)d = ((uint32_t)a & 0xffffff)
 				| ((uint32_t)(a >> 8) & ~0xffffff);
 		*(uint16_t*)(d + 4) = a >> 40;
+#endif
 #else
 		d[0] = a;
 		d[1] = a >> 8;
@@ -436,3 +457,4 @@ size_t crzy64_decode(uint8_t *d, const uint8_t *s, size_t n) {
 	return d - d0;
 }
 
+#endif // CRZY64_H
