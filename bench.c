@@ -49,7 +49,7 @@ int main(int argc, char **argv) {
 
 	if (argc > 1) n = atoi(argv[1]);
 	if (argc > 2) nrep = atoi(argv[2]);
-	if ((nrep - 1) >= 100) return 1;
+	if ((nrep - 1) >= 1000) return 1;
 	if (!n || n > 877) return 1; /* >= 2GB */
 
 	printf("vector: %s\nfast64: %s\nsize: %u MB\n\n",

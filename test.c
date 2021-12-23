@@ -6,7 +6,7 @@
 
 #include "crzy64.h"
 
-#define N 64
+#define N 128
 #define GUARD_SIZE 8
 
 int main() {

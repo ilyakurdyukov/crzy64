@@ -331,10 +331,10 @@ size_t crzy64_decode(uint8_t *CRZY64_RESTRICT d,
 		__m256i c3 = _mm256_set1_epi8(3), c9 = _mm256_set1_epi8(9);
 		__m256i c63 = _mm256_set1_epi8(63), a, b, c;
 		__m256i idx = _mm256_setr_epi8(
-				0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14, -1, -1, -1, -1,
-				5, 6, 8, 9, 10, 12, 13, 14, -1, -1, -1, -1, 0, 1, 2, 4);
+				-1, -1, -1, -1, 0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14,
+				0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14, -1, -1, -1, -1);
+		__m256i mask = _mm256_cmpgt_epi32(idx, c3);
 		do {
-			__m128i x, y;
 			a = _mm256_loadu_si256((const __m256i*)s);
 			b = _mm256_and_si256(_mm256_srli_epi16(a, 5), c3);
 			c = _mm256_and_si256(_mm256_sub_epi8(a, c9), _mm256_cmpgt_epi8(a, c63));
@@ -342,16 +342,7 @@ size_t crzy64_decode(uint8_t *CRZY64_RESTRICT d,
 			a = _mm256_and_si256(a, c63);
 			a = _mm256_xor_si256(a, _mm256_srli_epi32(a, 6));
 			a = _mm256_shuffle_epi8(a, idx);
-			x = _mm256_castsi256_si128(a);
-			y = _mm256_extracti128_si256(a, 1);
-			_mm_storel_epi64((__m128i*)d, x);
-#ifdef __x86_64__
-			*(uint64_t*)(d + 8) = _mm_extract_epi64(_mm_or_si128(x, y), 1);
-#else
-			x = _mm_bsrli_si128(_mm_or_si128(x, y), 8);
-			_mm_storel_epi64((__m128i*)(d + 8), x);
-#endif
-			_mm_storel_epi64((__m128i*)(d + 16), y);
+			_mm256_maskstore_epi32((int32_t*)d - 1, mask, a);
 			s += 32; n -= 32; d += 24;
 		} while (n >= 32);
 	}

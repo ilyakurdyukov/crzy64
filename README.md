@@ -21,9 +21,9 @@ There is a difference with base64 as it uses "./" instead of "+/" and the data i
     fast64: yes
     size: 100 MB
     
-    memcpy: 8.262ms (12103.61 MB/s)
-    encode: 27.441ms (3644.18 MB/s)
-    decode: 15.982ms (6257.04 MB/s)
-    encode_unaligned: 27.305ms (3662.33 MB/s)
-    decode_unaligned: 16.251ms (6153.47 MB/s)
+    memcpy: 7.911ms (12640.63 MB/s)
+    encode: 26.173ms (3820.73 MB/s)
+    decode: 14.586ms (6855.89 MB/s)
+    encode_unaligned: 26.635ms (3754.46 MB/s)
+    decode_unaligned: 14.579ms (6859.18 MB/s)
 
