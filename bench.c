@@ -27,6 +27,8 @@ static int64_t get_time_usec() {
 int main(int argc, char **argv) {
 #if CRZY64_VEC && CRZY64_NEON
 	const char *vec_type = "neon";
+#elif CRZY64_VEC && defined(__AVX2__)
+	const char *vec_type = "avx2";
 #elif CRZY64_VEC && defined(__SSSE3__)
 	const char *vec_type = "ssse3";
 #elif CRZY64_VEC && defined(__SSE2__)
