@@ -81,6 +81,8 @@
 #if CRZY64_VEC
 #ifdef __AVX2__
 #include <immintrin.h>
+#elif defined(__SSE4_1__)
+#include <smmintrin.h>
 #elif defined(__SSSE3__)
 #include <tmmintrin.h>
 #elif defined(__SSE2__)
@@ -187,8 +189,12 @@ size_t crzy64_encode(uint8_t *CRZY64_RESTRICT d,
 		do {
 #ifdef __SSSE3__
 			a = _mm_loadl_epi64((const __m128i*)s);
+#ifdef __SSE4_1__
+			a = _mm_insert_epi32(a, *(uint32_t*)(s + 8), 2);
+#else
 			b = _mm_cvtsi32_si128(*(uint32_t*)(s + 8));
 			a = _mm_unpacklo_epi64(a, b);
+#endif
 			a = _mm_shuffle_epi8(a, idx);
 			/* unpack */
 			c = _mm_andnot_si128(ml, a);	/* fourth bytes are clear */
@@ -339,8 +345,12 @@ size_t crzy64_decode(uint8_t *CRZY64_RESTRICT d,
 			x = _mm256_castsi256_si128(a);
 			y = _mm256_extracti128_si256(a, 1);
 			_mm_storel_epi64((__m128i*)d, x);
+#ifdef __x86_64__
+			*(uint64_t*)(d + 8) = _mm_extract_epi64(_mm_or_si128(x, y), 1);
+#else
 			x = _mm_bsrli_si128(_mm_or_si128(x, y), 8);
 			_mm_storel_epi64((__m128i*)(d + 8), x);
+#endif
 			_mm_storel_epi64((__m128i*)(d + 16), y);
 			s += 32; n -= 32; d += 24;
 		} while (n >= 32);
@@ -365,8 +375,12 @@ size_t crzy64_decode(uint8_t *CRZY64_RESTRICT d,
 #ifdef __SSSE3__
 			a = _mm_shuffle_epi8(a, idx);
 			_mm_storel_epi64((__m128i*)d, a);
+#ifdef __SSE4_1__
+			*(uint32_t*)(d + 8) = _mm_extract_epi32(a, 2);
+#else
 			a = _mm_bsrli_si128(a, 8);
 			*(uint32_t*)(d + 8) = _mm_cvtsi128_si32(a);
+#endif
 #else
 			b = _mm_andnot_si128(mask, _mm_bsrli_si128(a, 1));
 			a = _mm_or_si128(_mm_and_si128(a, mask), b);

@@ -33,6 +33,8 @@ int main(int argc, char **argv) {
 	const char *vec_type = "neon";
 #elif CRZY64_VEC && defined(__AVX2__)
 	const char *vec_type = "avx2";
+#elif CRZY64_VEC && defined(__SSE4_1__)
+	const char *vec_type = "sse4.1";
 #elif CRZY64_VEC && defined(__SSSE3__)
 	const char *vec_type = "ssse3";
 #elif CRZY64_VEC && defined(__SSE2__)
