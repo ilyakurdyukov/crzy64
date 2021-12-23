@@ -37,7 +37,8 @@
 #endif
 
 #ifndef CRZY64_FAST64
-#if defined(__LP64__) || defined(__x86_64__) || defined(__aarch64__) || defined(__e2k__)
+#if defined(__LP64__) || defined(__x86_64__) || defined(__aarch64__) \
+		|| defined(__e2k__)
 #define CRZY64_FAST64 1
 #else
 #define CRZY64_FAST64 0
@@ -45,7 +46,8 @@
 #endif
 
 #ifndef CRZY64_UNALIGNED
-#if defined(__i386__) || defined(__x86_64__) || defined(__aarch64__) || defined(__e2k__)
+#if defined(__i386__) || defined(__x86_64__) || defined(__aarch64__) \
+		|| (defined(__e2k__) && __iset__ >= 5)
 #define CRZY64_UNALIGNED 1
 #else
 #define CRZY64_UNALIGNED 0

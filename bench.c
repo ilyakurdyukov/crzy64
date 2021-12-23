@@ -5,6 +5,10 @@
 
 #include "crzy64.h"
 
+#ifndef CRZY64_FAST64
+#define CRZY64_FAST64 0
+#endif
+
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -38,8 +42,12 @@ int main(int argc, char **argv) {
 #endif
 	size_t i, n = 100, n1, n2;
 	uint8_t *buf, *out;
+	unsigned nrep = 5;
+	int64_t t0, t1;
 
 	if (argc > 1) n = atoi(argv[1]);
+	if (argc > 2) nrep = atoi(argv[2]);
+	if ((nrep - 1) >= 100) return 1;
 	if (!n || n > 877) return 1; /* >= 2GB */
 
 	printf("vector: %s\nfast64: %s\nsize: %u MB\n\n",
@@ -48,21 +56,25 @@ int main(int argc, char **argv) {
 	n1 = n << 20;
 	n2 = (n1 * 4 + 2) / 3;
 
-	if (!(buf = malloc(n1 + n2))) return 1;
+	if (!(buf = malloc(n1 + n2 + 1))) return 1;
 	out = buf + n1;
 	for (i = 0; i < n1 + n2; i++) buf[i] = i ^ 0x55;
 
 #define BENCH(name, code) \
-	for (i = 0; i < 5; i++) { \
-		int64_t t = get_time_usec(); \
+	for (t1 = i = 0; i < nrep; i++) { \
+		t0 = get_time_usec(); \
 		code; \
-		t = get_time_usec() - t; \
-		printf(name ": %.3fms (%.2f MB/s)\n", t * 0.001, n * 1e6 / t); \
+		t0 = get_time_usec() - t0; \
+		if (!i || t0 < t1) t1 = t0; \
 	} \
-	putchar('\n');
+	printf(name ": %.3fms (%.2f MB/s)\n", t1 * 0.001, n * 1e6 / t1);
 
 	BENCH("memcpy", memcpy(out, buf, n1))
 	BENCH("encode", crzy64_encode(out, buf, n1))
 	BENCH("decode", crzy64_decode(buf, out, n2))
+#if CRZY64_UNALIGNED
+	BENCH("encode_unaligned", crzy64_encode(out + 1, buf + 1, n1))
+	BENCH("decode_unaligned", crzy64_decode(buf + 1, out + 1, n2))
+#endif
 #undef BENCH
 }
