@@ -140,7 +140,7 @@ size_t crzy64_encode(uint8_t *CRZY64_RESTRICT d,
 		uint8x16_t c63 = vdupq_n_u8(63), c6 = vdupq_n_u8(6);
 		uint8x8_t idx0 = vcreate_u8(0xff050403ff020100);
 #ifdef __aarch64__
-		uint8x8_t idx1 = vcreate_u8(0xff0f0e0dff0c0b0a);
+		uint8x8_t idx1 = vcreate_u8(0xff0b0a09ff080706);
 		uint8x16_t idx = vcombine_u8(idx0, idx1);
 #else
 		uint8x8_t idx1 = vcreate_u8(0xff070605ff040302);
@@ -148,7 +148,8 @@ size_t crzy64_encode(uint8_t *CRZY64_RESTRICT d,
 		uint32x4_t ml = vdupq_n_u32(0x030f3f), x, y, z;
 		do {
 #ifdef __aarch64__
-			a = vcombine_u8(vld1_u8(s), vld1_u8(s + 4));
+			a = vcombine_u8(vld1_u8(s),
+					vcreate_u8(*(const uint32_t*)(s + 8)));
 			a = vqtbl1q_u8(a, idx);
 #else
 			a = vcombine_u8(vtbl1_u8(vld1_u8(s), idx0),
