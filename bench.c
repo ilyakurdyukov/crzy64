@@ -5,10 +5,6 @@
 
 #include "crzy64.h"
 
-#ifndef CRZY64_FAST64
-#define CRZY64_FAST64 0
-#endif
-
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -29,19 +25,6 @@ static int64_t get_time_usec() {
 #endif
 
 int main(int argc, char **argv) {
-#if CRZY64_VEC && CRZY64_NEON
-	const char *vec_type = "neon";
-#elif CRZY64_VEC && defined(__AVX2__)
-	const char *vec_type = "avx2";
-#elif CRZY64_VEC && defined(__SSE4_1__)
-	const char *vec_type = "sse4.1";
-#elif CRZY64_VEC && defined(__SSSE3__)
-	const char *vec_type = "ssse3";
-#elif CRZY64_VEC && defined(__SSE2__)
-	const char *vec_type = "sse2";
-#else
-	const char *vec_type = "none";
-#endif
 	size_t i, n = 100, n1, n2;
 	uint8_t *buf, *out;
 	unsigned nrep = 5;
@@ -52,8 +35,33 @@ int main(int argc, char **argv) {
 	if ((nrep - 1) >= 1000) return 1;
 	if (!n || n > 877) return 1; /* >= 2GB */
 
-	printf("vector: %s\nfast64: %s\nsize: %u MB\n\n",
-			vec_type, CRZY64_FAST64 ? "yes" : "no", (int)n);
+	printf("vector: "
+#if CRZY64_VEC && CRZY64_NEON && defined(__aarch64__)
+		"neon-arm64"
+#elif CRZY64_VEC && CRZY64_NEON
+		"neon"
+#elif CRZY64_VEC && defined(__AVX2__)
+		"avx2"
+#elif CRZY64_VEC && defined(__SSE4_1__)
+		"sse4.1"
+#elif CRZY64_VEC && defined(__SSSE3__)
+		"ssse3"
+#elif CRZY64_VEC && defined(__SSE2__)
+		"sse2"
+#else
+		"none"
+#endif
+#if CRZY64_FAST64
+		", fast64: yes"
+#else
+		", fast64: no"
+#endif
+#if CRZY64_UNALIGNED
+		", unaligned: yes"
+#else
+		", unaligned: no"
+#endif
+		"\nsize: %u MB\n\n", (int)n);
 
 	n1 = n << 20;
 	n2 = (n1 * 4 + 2) / 3;
@@ -74,9 +82,7 @@ int main(int argc, char **argv) {
 	BENCH("memcpy", memcpy(out, buf, n1))
 	BENCH("encode", crzy64_encode(out, buf, n1))
 	BENCH("decode", crzy64_decode(buf, out, n2))
-#if CRZY64_UNALIGNED
 	BENCH("encode_unaligned", crzy64_encode(out + 1, buf + 1, n1))
 	BENCH("decode_unaligned", crzy64_decode(buf + 1, out + 1, n2))
-#endif
 #undef BENCH
 }

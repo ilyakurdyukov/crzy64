@@ -17,13 +17,12 @@ There is a difference with base64 as it uses "./" instead of "+/" and the data i
 
     $ make bench
     ./crzy64_bench
-    vector: avx2
-    fast64: yes
+    vector: avx2, fast64: yes, unaligned: yes
     size: 100 MB
     
     memcpy: 7.911ms (12640.63 MB/s)
-    encode: 26.173ms (3820.73 MB/s)
+    encode: 16.540ms (6045.95 MB/s)
     decode: 14.586ms (6855.89 MB/s)
-    encode_unaligned: 26.635ms (3754.46 MB/s)
+    encode_unaligned: 16.514ms (6055.47 MB/s)
     decode_unaligned: 14.579ms (6859.18 MB/s)
 
