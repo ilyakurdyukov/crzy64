@@ -79,10 +79,29 @@ int main(int argc, char **argv) {
 	} \
 	printf(name ": %.3fms (%.2f MB/s)\n", t1 * 0.001, n * 1e6 / t1);
 
+#define BLOCK(fn, d, s, n1, n) do { \
+	size_t j = n1, k; \
+	do j -= k = j > n ? n : j, fn(d, s, k); while (j); \
+} while (0)
+
+#define BENCH_BLOCK(name, n) \
+	BENCH("memcpy" name, BLOCK(memcpy, out, buf, n1, (n * 1000))) \
+	BENCH("encode" name, \
+			BLOCK(crzy64_encode, out, buf, n1, (n * 1000))) \
+	BENCH("decode" name, \
+			BLOCK(crzy64_decode, buf, out, n2, ((n * 1000) * 4 + 2) / 3))
+
 	BENCH("memcpy", memcpy(out, buf, n1))
 	BENCH("encode", crzy64_encode(out, buf, n1))
 	BENCH("decode", crzy64_decode(buf, out, n2))
 	BENCH("encode_unaligned", crzy64_encode(out + 1, buf + 1, n1))
 	BENCH("decode_unaligned", crzy64_decode(buf + 1, out + 1, n2))
+	printf("\nblock repeat:\n");
+	BENCH_BLOCK(" (1Kb)", 1)
+	BENCH_BLOCK(" (10Kb)", 10)
+	BENCH_BLOCK(" (100Kb)", 100)
+	BENCH_BLOCK(" (1Mb)", 1000)
+	BENCH_BLOCK(" (10Mb)", 10000)
+	BENCH_BLOCK(" (20Mb)", 20000)
 #undef BENCH
 }
