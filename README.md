@@ -21,6 +21,8 @@ There is a difference with base64 as it uses "./" instead of "+/" and the data i
 
 * "block repeat" means repeating processing of the same block of a specified size until the total "size" is reached.
 
+* For both decode and encode, MB/s refer to unencoded data (encoder input, decoder output). `Turbo Base64`, on the other hand, shows MB/s of processed input data, which is 4/3 times more for a decoder. 
+
 ```
 $ make bench
 ./crzy64_bench
