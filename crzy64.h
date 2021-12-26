@@ -78,6 +78,14 @@
 #define CRZY64_RESTRICT restrict
 #endif
 
+#ifndef CRZY64_PREFETCH
+#ifdef __GNUC__
+#define CRZY64_PREFETCH(p) __builtin_prefetch(p, 0)
+#else
+#define CRZY64_PREFETCH(p)
+#endif
+#endif
+
 #if CRZY64_VEC
 #ifdef __AVX2__
 #include <immintrin.h>
@@ -186,8 +194,10 @@ size_t crzy64_encode(uint8_t *CRZY64_RESTRICT d,
 				4, 5, 6, -1, 7, 8, 9, -1, 10, 11, 12, -1, 13, 14, 15, -1,
 				0, 1, 2, -1, 3, 4, 5, -1, 6, 7, 8, -1, 9, 10, 11, -1);
 		__m256i mask = _mm256_setr_epi32(0, -1, -1, -1, -1, -1, -1, 0);
+		const uint8_t *end = s + n - 24; (void)end;
 		do {
 			a = _mm256_maskload_epi32((const int32_t*)s - 1, mask);
+			CRZY64_PREFETCH(s + 1024 < end ? s + 1024 : end);
 			a = _mm256_shuffle_epi8(a, idx);
 			/* unpack */
 			c = _mm256_andnot_si256(ml, a);	/* fourth bytes are clear */
@@ -367,8 +377,10 @@ size_t crzy64_decode(uint8_t *CRZY64_RESTRICT d,
 				-1, -1, -1, -1, 0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14,
 				0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14, -1, -1, -1, -1);
 		__m256i mask = _mm256_cmpgt_epi32(idx, c3);
+		const uint8_t *end = s + n - 32; (void)end;
 		do {
 			a = _mm256_loadu_si256((const __m256i*)s);
+			CRZY64_PREFETCH(s + 1024 < end ? s + 1024 : end);
 			b = _mm256_and_si256(_mm256_srli_epi16(a, 5), c3);
 			c = _mm256_and_si256(_mm256_sub_epi8(a, c9), _mm256_cmpgt_epi8(a, c63));
 			a = _mm256_add_epi8(_mm256_add_epi8(a, b), c);
@@ -416,6 +428,31 @@ size_t crzy64_decode(uint8_t *CRZY64_RESTRICT d,
 #endif
 			s += 16; n -= 16; d += 12;
 		} while (n >= 16);
+#ifdef __SSSE3__
+		if (n) {
+			int32_t x;
+			b = _mm_setr_epi8(
+					0x74, 0x75, 0x76, 0x77,  0x78,  0x79,  0x7a,  0x7b,
+					0x7c, 0x7d, 0x7e, 0x7f, -0x80, -0x7f, -0x7e, -0x7d);
+			a = _mm_loadu_si128((const __m128i*)(s + n) - 1);
+			d += (n >> 2) * 3; n &= 3;
+			b = _mm_sub_epi8(b, _mm_set1_epi8(n));
+			a = _mm_shuffle_epi8(a, b);
+			b = _mm_and_si128(_mm_srli_epi16(a, 5), c3);
+			c = _mm_and_si128(_mm_sub_epi8(a, c9), _mm_cmpgt_epi8(a, c63));
+			a = _mm_add_epi8(_mm_add_epi8(a, b), c);
+			a = _mm_and_si128(a, c63);
+			a = _mm_xor_si128(a, _mm_srli_epi32(a, 6));
+			a = _mm_shuffle_epi8(a, idx);
+			_mm_storel_epi64((__m128i*)(d - 9), a);
+			b = _mm_bsrli_si128(a, 8);
+			x = _mm_cvtsi128_si32(b);
+			d[-1] = x;
+			if (n > 1) *d++ = x >> 8;
+			if (n > 2) *d++ = x >> 16;
+		}
+		return d - d0;
+#endif
 	}
 #endif
 #if CRZY64_FAST64
