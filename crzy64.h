@@ -350,8 +350,10 @@ size_t crzy64_decode(uint8_t *CRZY64_RESTRICT d,
 #ifdef __aarch64__
 		uint8x16_t idx = vcombine_u8(idx0, idx1);
 #endif
+		const uint8_t *end = s + n - 16; (void)end;
 		do {
 			a = vld1q_u8(s);
+			CRZY64_PREFETCH(s + 1024 < end ? s + 1024 : end);
 			b = vandq_u8(vsubq_u8(a, c9), vcltq_u8(c63, a));
 			a = vaddq_u8(vaddq_u8(a, vshrq_n_u8(a, 5)), b);
 			a = vandq_u8(a, c63);
@@ -368,6 +370,43 @@ size_t crzy64_decode(uint8_t *CRZY64_RESTRICT d,
 #endif
 			s += 16; n -= 16; d += 12;
 		} while (n >= 16);
+#if 0 // worse
+		if (n) {
+			int32_t x;
+			uint8x8_t idx2 = vcreate_u8(0x0b0a090807060504);
+			uint8x8_t idx3 = vcreate_u8(0x131211100f0e0d0c);
+			b = vcombine_u8(idx2, idx3);
+			a = vld1q_u8(s + n - 16);
+			d += (n >> 2) * 3; n &= 3;
+			b = vsubq_u8(b, vdupq_n_u8(n));
+#ifdef __aarch64__
+			a = vqtbl1q_u8(a, b);
+#else
+			c.c = a;
+			a = vcombine_u8(vtbl2_u8(c.b, vget_low_u8(b)),
+				vtbl2_u8(c.b, vget_high_u8(b)));
+#endif
+			b = vandq_u8(vsubq_u8(a, c9), vcltq_u8(c63, a));
+			a = vaddq_u8(vaddq_u8(a, vshrq_n_u8(a, 5)), b);
+			a = vandq_u8(a, c63);
+			c.a = vreinterpretq_u32_u8(a);
+			c.a = veorq_u32(c.a, vshrq_n_u32(c.a, 6));
+#ifdef __aarch64__
+			c.c = vqtbl1q_u8(c.c, idx);
+			vst1q_lane_u64((uint64_t*)(d - 9), c.d, 0);
+			x = vgetq_lane_u32(c.a, 2);
+#else
+			vst1_u8(d - 9, vtbl2_u8(c.b, idx0));
+			x = vget_lane_u32(vreinterpret_u32_u8(vtbl2_u8(c.b, idx1)), 0);
+#endif
+			d[-1] = x;
+			if (n > 1) {
+				d += n - 1;
+				*(uint16_t*)(d - 2) = x >> ((n << 3) - 16);
+			}
+		}
+		return d - d0;
+#endif
 	}
 #elif CRZY64_VEC && defined(__AVX2__)
 	if (n >= 32) {
@@ -390,6 +429,38 @@ size_t crzy64_decode(uint8_t *CRZY64_RESTRICT d,
 			_mm256_maskstore_epi32((int32_t*)d - 1, mask, a);
 			s += 32; n -= 32; d += 24;
 		} while (n >= 32);
+		if (n) {
+			int32_t x; __m128i a1, b1, c1;
+			b1 = _mm_setr_epi8(
+					0x74, 0x75, 0x76, 0x77,  0x78,  0x79,  0x7a,  0x7b,
+					0x7c, 0x7d, 0x7e, 0x7f, -0x80, -0x7f, -0x7e, -0x7d);
+			s += n;
+			d += (n >> 2) * 3; n &= 3;
+			c1 = _mm_loadu_si128((const __m128i*)(s - n - 28));
+			a1 = _mm_loadu_si128((const __m128i*)s - 1);
+			b1 = _mm_sub_epi8(b1, _mm_set1_epi8(n));
+			a1 = _mm_shuffle_epi8(a1, b1);
+			a = _mm256_castsi128_si256(c1);
+			a = _mm256_inserti128_si256(a, a1, 1);
+			b = _mm256_and_si256(_mm256_srli_epi16(a, 5), c3);
+			c = _mm256_and_si256(_mm256_sub_epi8(a, c9), _mm256_cmpgt_epi8(a, c63));
+			a = _mm256_add_epi8(_mm256_add_epi8(a, b), c);
+			a = _mm256_and_si256(a, c63);
+			a = _mm256_xor_si256(a, _mm256_srli_epi32(a, 6));
+			a = _mm256_shuffle_epi8(a, idx);
+			c1 = _mm256_castsi256_si128(a);
+			b1 = _mm256_castsi256_si128(mask);
+			a1 = _mm256_extracti128_si256(a, 1);
+			_mm_maskstore_epi32((int32_t*)(d - 9) - 4, b1, c1);
+			_mm_storel_epi64((__m128i*)(d - 9), a1);
+			x = _mm_extract_epi32(a1, 2);
+			d[-1] = x;
+			if (n > 1) {
+				d += n - 1;
+				*(uint16_t*)(d - 2) = x >> ((n << 3) - 16);
+			}
+		}
+		return d - d0;
 	}
 #elif CRZY64_VEC && defined(__SSE2__)
 	if (n >= 16) {
@@ -445,11 +516,17 @@ size_t crzy64_decode(uint8_t *CRZY64_RESTRICT d,
 			a = _mm_xor_si128(a, _mm_srli_epi32(a, 6));
 			a = _mm_shuffle_epi8(a, idx);
 			_mm_storel_epi64((__m128i*)(d - 9), a);
+#ifdef __SSE4_1__
+			x = _mm_extract_epi32(a, 2);
+#else
 			b = _mm_bsrli_si128(a, 8);
 			x = _mm_cvtsi128_si32(b);
+#endif
 			d[-1] = x;
-			if (n > 1) *d++ = x >> 8;
-			if (n > 2) *d++ = x >> 16;
+			if (n > 1) {
+				d += n - 1;
+				*(uint16_t*)(d - 2) = x >> ((n << 3) - 16);
+			}
 		}
 		return d - d0;
 #endif
@@ -504,27 +581,49 @@ size_t crzy64_decode(uint8_t *CRZY64_RESTRICT d,
 	} while (n >= 8);
 
 	if (n > 5) {
+#if CRZY64_UNALIGNED
+		uint64_t a = *(const uint32_t*)s;
+		a |= (uint64_t)*(const uint32_t*)(s + n - 4) << ((n << 3) - 32);
+#else
 		uint64_t a = s[0] | s[1] << 8 | s[2] << 16 | s[3] << 24;
 		a |= (uint64_t)(s[4] | s[5] << 8) << 32;
 		if (n > 6) a |= (uint64_t)s[6] << 48;
+#endif
 		a = CRZY64_DEC8(a);
 		a = CRZY64_PACK(a);
+#if CRZY64_UNALIGNED
+		*(uint32_t*)d = a;
+#else
 		d[0] = a;
 		d[1] = a >> 8;
 		d[2] = a >> 16;
+#endif
 		d[3] = a >> 32;
 		if (n > 6) d[4] = a >> 40;
 		d += n - 2;
 	} else if (n > 1) {
-		uint32_t a = s[0] | s[1] << 8;
+		uint32_t a;
+#if CRZY64_UNALIGNED
+		a = *(const uint16_t*)s;
+		uint32_t x = *(const uint16_t*)(s + n - 2);
+		a |= x << ((n << 3) - 16);
+#else
+		a = s[0] | s[1] << 8;
 		if (n > 2) a |= s[2] << 16;
 		if (n > 3) a |= s[3] << 24;
+#endif
 		a = CRZY64_DEC4(a);
 		a = CRZY64_PACK(a);
 		d[0] = a;
+#if CRZY64_UNALIGNED
+		d += n - 1;
+		if (n > 2)
+			*(uint16_t*)(d - 2) = a >> ((n << 3) - 24);
+#else
 		if (n > 2) d[1] = a >> 8;
 		if (n > 3) d[2] = a >> 16;
 		d += n - 1;
+#endif
 	}
 #else
 	if (n >= 4) do {
