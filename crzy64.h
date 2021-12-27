@@ -503,13 +503,48 @@ size_t crzy64_decode(uint8_t *CRZY64_RESTRICT d,
 		/* xx0001x0011x0111 */
 		__m128i mask = _mm_setr_epi32(0xffffff, 0xffffff, 0xff0000, 0);
 #endif
+
+#define CRZY64_DEC_SSE2() do { \
+	b = _mm_and_si128(_mm_srli_epi16(a, 5), c3); \
+	c = _mm_and_si128(_mm_sub_epi8(a, c9), _mm_cmpgt_epi8(a, c63)); \
+	a = _mm_add_epi8(_mm_add_epi8(a, b), c); \
+	a = _mm_and_si128(a, c63); \
+	a = _mm_xor_si128(a, _mm_srli_epi32(a, 6)); \
+} while (0)
+
+#if CRZY64_UNROLL > 1 && defined(__SSSE3__)
+		const uint8_t *end = s + n - 16; (void)end;
+		while (n >= 32 + 6) {
+			__m128i a1;
+			a = _mm_loadu_si128((const __m128i*)s); s += 16;
+			CRZY64_PREFETCH(s + 1024 < end ? s + 1024 : end);
+			CRZY64_DEC_SSE2();
+			a = _mm_shuffle_epi8(a, idx);
+			a1 = _mm_loadu_si128((const __m128i*)s); s += 16;
+			_mm_storeu_si128((__m128i*)d, a); d += 12;
+			a = a1;
+			CRZY64_DEC_SSE2();
+			a = _mm_shuffle_epi8(a, idx);
+			_mm_storeu_si128((__m128i*)d, a); d += 12;
+			n -= 32;
+		}
+		while (n >= 16) {
+			a = _mm_loadu_si128((const __m128i*)s);
+			CRZY64_DEC_SSE2();
+			a = _mm_shuffle_epi8(a, idx);
+			_mm_storel_epi64((__m128i*)d, a);
+#ifdef __SSE4_1__
+			*(uint32_t*)(d + 8) = _mm_extract_epi32(a, 2);
+#else
+			a = _mm_bsrli_si128(a, 8);
+			*(uint32_t*)(d + 8) = _mm_cvtsi128_si32(a);
+#endif
+			s += 16; n -= 16; d += 12;
+		}
+#else
 		do {
 			a = _mm_loadu_si128((const __m128i*)s);
-			b = _mm_and_si128(_mm_srli_epi16(a, 5), c3);
-			c = _mm_and_si128(_mm_sub_epi8(a, c9), _mm_cmpgt_epi8(a, c63));
-			a = _mm_add_epi8(_mm_add_epi8(a, b), c);
-			a = _mm_and_si128(a, c63);
-			a = _mm_xor_si128(a, _mm_srli_epi32(a, 6));
+			CRZY64_DEC_SSE2();
 #ifdef __SSSE3__
 			a = _mm_shuffle_epi8(a, idx);
 			_mm_storel_epi64((__m128i*)d, a);
@@ -530,6 +565,7 @@ size_t crzy64_decode(uint8_t *CRZY64_RESTRICT d,
 #endif
 			s += 16; n -= 16; d += 12;
 		} while (n >= 16);
+#endif
 #ifdef __SSSE3__
 		if (n) {
 			int32_t x;
@@ -540,11 +576,7 @@ size_t crzy64_decode(uint8_t *CRZY64_RESTRICT d,
 			d += (n >> 2) * 3; n &= 3;
 			b = _mm_sub_epi8(b, _mm_set1_epi8(n));
 			a = _mm_shuffle_epi8(a, b);
-			b = _mm_and_si128(_mm_srli_epi16(a, 5), c3);
-			c = _mm_and_si128(_mm_sub_epi8(a, c9), _mm_cmpgt_epi8(a, c63));
-			a = _mm_add_epi8(_mm_add_epi8(a, b), c);
-			a = _mm_and_si128(a, c63);
-			a = _mm_xor_si128(a, _mm_srli_epi32(a, 6));
+			CRZY64_DEC_SSE2();
 			a = _mm_shuffle_epi8(a, idx);
 			_mm_storel_epi64((__m128i*)(d - 9), a);
 #ifdef __SSE4_1__

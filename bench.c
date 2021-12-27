@@ -5,10 +5,14 @@
 #include <time.h>
 
 #ifdef TB32_BENCH
-size_t _tb64avx2enc(const unsigned char *in, size_t inlen, unsigned char *out);
-size_t _tb64avx2dec(const unsigned char *in, size_t inlen, unsigned char *out);
-#define crzy64_encode(d, s, n) _tb64avx2enc(s, n, d)
-#define crzy64_decode(d, s, n) _tb64avx2dec(s, n, d)
+#include "turbob64.h"
+#ifdef __AVX2__
+#define crzy64_encode(d, s, n) tb64avx2enc(s, n, d)
+#define crzy64_decode(d, s, n) tb64avx2dec(s, n, d)
+#else
+#define crzy64_encode(d, s, n) tb64sseenc(s, n, d)
+#define crzy64_decode(d, s, n) tb64ssedec(s, n, d)
+#endif
 #else
 #include "crzy64.h"
 #endif
@@ -77,10 +81,15 @@ int main(int argc, char **argv) {
 			argc -= 2; argv += 2;
 		} else if (argc > 2 && !strcmp(argv[1], "--limit")) {
 			nlimit = atol(argv[2]);
+			if (nlimit - 1 >= 10000) return 1;
 			argc -= 2; argv += 2;
 		} else break;
 	}
 
+#ifdef TB32_BENCH
+  tb64ini(0, 0);
+  printf("TB64 simd (id = %x, \"%s\")\n", cpuini(0), cpustr(cpuini(0))); 
+#else
 	printf("vector: "
 #if CRZY64_VEC && CRZY64_NEON && defined(__aarch64__)
 		"neon-arm64"
@@ -107,7 +116,9 @@ int main(int argc, char **argv) {
 #else
 		", unaligned: no"
 #endif
-		"\nsize: %u MB, repeat: %u, limit: %u\n\n", (int)n, nrep, nlimit);
+		"\n");
+#endif
+	printf("size: %u MB, repeat: %u, limit: %u\n\n", (int)n, nrep, nlimit);
 
 	n1 = n << 20;
 	n2 = (n1 * 4 + 2) / 3;
