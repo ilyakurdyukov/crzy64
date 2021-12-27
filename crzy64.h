@@ -87,7 +87,9 @@
 #endif
 
 #if CRZY64_VEC
-#ifdef __AVX2__
+#if CRZY64_NEON
+#include <arm_neon.h>
+#elif defined(__AVX2__)
 #include <immintrin.h>
 #elif defined(__SSE4_1__)
 #include <smmintrin.h>
@@ -95,9 +97,17 @@
 #include <tmmintrin.h>
 #elif defined(__SSE2__)
 #include <emmintrin.h>
+#else
+#undef CRZY64_VEC
+#define CRZY64_VEC 0
 #endif
-#if CRZY64_NEON
-#include <arm_neon.h>
+#endif
+
+#ifndef CRZY64_UNROLL
+#if !defined(CRZY64_E2K_LCC)
+#define CRZY64_UNROLL 2
+#else
+#define CRZY64_UNROLL 0
 #endif
 #endif
 
@@ -417,18 +427,44 @@ size_t crzy64_decode(uint8_t *CRZY64_RESTRICT d,
 				0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14, -1, -1, -1, -1);
 		__m256i mask = _mm256_cmpgt_epi32(idx, c3);
 		const uint8_t *end = s + n - 32; (void)end;
+
+#define CRZY64_DEC_AVX2() do { \
+	b = _mm256_and_si256(_mm256_srli_epi16(a, 5), c3); \
+	c = _mm256_and_si256(_mm256_sub_epi8(a, c9), _mm256_cmpgt_epi8(a, c63)); \
+	a = _mm256_add_epi8(_mm256_add_epi8(a, b), c); \
+	a = _mm256_and_si256(a, c63); \
+	a = _mm256_xor_si256(a, _mm256_srli_epi32(a, 6)); \
+	a = _mm256_shuffle_epi8(a, idx); \
+} while (0)
+
+#if CRZY64_UNROLL > 1
+		while (n >= 64) {
+			__m256i a1;
+			a = _mm256_loadu_si256((const __m256i*)s); s += 32;
+			CRZY64_PREFETCH(s + 1024 < end ? s + 1024 : end);
+			CRZY64_DEC_AVX2();
+			a1 = _mm256_loadu_si256((const __m256i*)s); s += 32;
+			_mm256_maskstore_epi32((int32_t*)d - 1, mask, a); d += 24;
+			a = a1;
+			CRZY64_DEC_AVX2();
+			_mm256_maskstore_epi32((int32_t*)d - 1, mask, a); d += 24;
+			n -= 64;
+		}
+		if (n >= 32) {
+			a = _mm256_loadu_si256((const __m256i*)s);
+			CRZY64_DEC_AVX2();
+			_mm256_maskstore_epi32((int32_t*)d - 1, mask, a);
+			s += 32; n -= 32; d += 24;
+		}
+#else
 		do {
 			a = _mm256_loadu_si256((const __m256i*)s);
 			CRZY64_PREFETCH(s + 1024 < end ? s + 1024 : end);
-			b = _mm256_and_si256(_mm256_srli_epi16(a, 5), c3);
-			c = _mm256_and_si256(_mm256_sub_epi8(a, c9), _mm256_cmpgt_epi8(a, c63));
-			a = _mm256_add_epi8(_mm256_add_epi8(a, b), c);
-			a = _mm256_and_si256(a, c63);
-			a = _mm256_xor_si256(a, _mm256_srli_epi32(a, 6));
-			a = _mm256_shuffle_epi8(a, idx);
+			CRZY64_DEC_AVX2();
 			_mm256_maskstore_epi32((int32_t*)d - 1, mask, a);
 			s += 32; n -= 32; d += 24;
 		} while (n >= 32);
+#endif
 		if (n) {
 			int32_t x; __m128i a1, b1, c1;
 			b1 = _mm_setr_epi8(
@@ -442,12 +478,7 @@ size_t crzy64_decode(uint8_t *CRZY64_RESTRICT d,
 			a1 = _mm_shuffle_epi8(a1, b1);
 			a = _mm256_castsi128_si256(c1);
 			a = _mm256_inserti128_si256(a, a1, 1);
-			b = _mm256_and_si256(_mm256_srli_epi16(a, 5), c3);
-			c = _mm256_and_si256(_mm256_sub_epi8(a, c9), _mm256_cmpgt_epi8(a, c63));
-			a = _mm256_add_epi8(_mm256_add_epi8(a, b), c);
-			a = _mm256_and_si256(a, c63);
-			a = _mm256_xor_si256(a, _mm256_srli_epi32(a, 6));
-			a = _mm256_shuffle_epi8(a, idx);
+			CRZY64_DEC_AVX2();
 			c1 = _mm256_castsi256_si128(a);
 			b1 = _mm256_castsi256_si128(mask);
 			a1 = _mm256_extracti128_si256(a, 1);
@@ -533,7 +564,7 @@ size_t crzy64_decode(uint8_t *CRZY64_RESTRICT d,
 	}
 #endif
 #if CRZY64_FAST64
-#if !CRZY64_VEC && CRZY64_UNALIGNED && !defined(CRZY64_E2K_LCC)
+#if CRZY64_UNROLL > 1 && !CRZY64_VEC && CRZY64_UNALIGNED
 	if (n >= 16) do {
 		uint64_t a = *(const uint64_t*)s, b;
 		b = *(const uint64_t*)(s + 8);
