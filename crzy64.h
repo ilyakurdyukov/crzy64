@@ -164,35 +164,68 @@ size_t crzy64_encode(uint8_t *CRZY64_RESTRICT d,
 		uint8x8_t idx1 = vcreate_u8(0xff070605ff040302);
 #endif
 		uint32x4_t ml = vdupq_n_u32(0x030f3f), x, y, z;
-		do {
+		const uint8_t *end = s + n - 12; (void)end;
+
 #ifdef __aarch64__
-			a = vcombine_u8(vld1_u8(s),
-					vcreate_u8(*(const uint32_t*)(s + 8)));
-			a = vqtbl1q_u8(a, idx);
+#define CRZY64_ENC_NEON_LD(a) do { \
+	a = vcombine_u8(vld1_u8(s), \
+			vcreate_u8(*(const uint32_t*)(s + 8))); \
+	a = vqtbl1q_u8(a, idx); \
+} while (0)
 #else
-			a = vcombine_u8(vtbl1_u8(vld1_u8(s), idx0),
-					vtbl1_u8(vld1_u8(s + 4), idx1));
+#define CRZY64_ENC_NEON_LD(a) do { \
+	a = vcombine_u8(vtbl1_u8(vld1_u8(s), idx0), \
+			vtbl1_u8(vld1_u8(s + 4), idx1)); \
+} while (0)
 #endif
-			/* unpack */
-			x = vreinterpretq_u32_u8(a);
-			z = vbicq_u32(x, ml);
-			y = veorq_u32(z, vshlq_n_u32(z, 6));
-			y = veorq_u32(y, vshlq_n_u32(z, 12));
-			z = vandq_u32(x, ml);
-			x = veorq_u32(z, vshrq_n_u32(z, 6));
-			x = veorq_u32(x, vshrq_n_u32(z, 12));
-			x = veorq_u32(x, vshlq_n_u32(y, 6));
-			a = vreinterpretq_u8_u32(x);
-			/* core */
-			a = vandq_u8(vaddq_u8(a, c5), c63);
-			b = vandq_u8(vshlq_n_u8(a, 5), c63);
-			c = vsubq_u8(c71, vrshrq_n_u8(a, 1));
-			c = vaddq_u8(b, c);
-			c = vandq_u8(c, vcltq_u8(a, c52));
-			a = vaddq_u8(vsubq_u8(a, c6), c);
+
+#define CRZY64_ENC_NEON() do { \
+	/* unpack */ \
+	x = vreinterpretq_u32_u8(a); \
+	z = vbicq_u32(x, ml); \
+	y = veorq_u32(z, vshlq_n_u32(z, 6)); \
+	y = veorq_u32(y, vshlq_n_u32(z, 12)); \
+	z = vandq_u32(x, ml); \
+	x = veorq_u32(z, vshrq_n_u32(z, 6)); \
+	x = veorq_u32(x, vshrq_n_u32(z, 12)); \
+	x = veorq_u32(x, vshlq_n_u32(y, 6)); \
+	a = vreinterpretq_u8_u32(x); \
+	/* core */ \
+	a = vandq_u8(vaddq_u8(a, c5), c63); \
+	b = vandq_u8(vshlq_n_u8(a, 5), c63); \
+	c = vsubq_u8(c71, vrshrq_n_u8(a, 1)); \
+	c = vaddq_u8(b, c); \
+	c = vandq_u8(c, vcltq_u8(a, c52)); \
+	a = vaddq_u8(vsubq_u8(a, c6), c); \
+} while (0)
+
+#if CRZY64_UNROLL > 1
+		while (n >= 24) {
+			uint8x16_t a1;
+			CRZY64_ENC_NEON_LD(a); s += 12;
+			CRZY64_ENC_NEON_LD(a1); s += 12;
+			CRZY64_PREFETCH(s + 1024 < end ? s + 1024 : end);
+			CRZY64_ENC_NEON();
+			vst1q_u8(d, a); d += 16;
+			a = a1;
+			CRZY64_ENC_NEON();
+			vst1q_u8(d, a); d += 16;
+			n -= 24;
+		}
+		if (n >= 12) {
+			CRZY64_ENC_NEON_LD(a);
+			CRZY64_ENC_NEON();
+			vst1q_u8(d, a);
+			s += 12; n -= 12; d += 16;
+		}
+#else
+		do {
+			CRZY64_ENC_NEON_LD(a);
+			CRZY64_ENC_NEON();
 			vst1q_u8(d, a);
 			s += 12; n -= 12; d += 16;
 		} while (n >= 12);
+#endif
 	}
 #elif CRZY64_VEC && defined(__AVX2__)
 	if (n >= 24) {
