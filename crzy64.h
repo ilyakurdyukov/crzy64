@@ -361,25 +361,57 @@ size_t crzy64_decode(uint8_t *CRZY64_RESTRICT d,
 		uint8x16_t idx = vcombine_u8(idx0, idx1);
 #endif
 		const uint8_t *end = s + n - 16; (void)end;
+
+#define CRZY64_DEC_NEON() do { \
+	b = vandq_u8(vsubq_u8(a, c9), vcltq_u8(c63, a)); \
+	a = vaddq_u8(vaddq_u8(a, vshrq_n_u8(a, 5)), b); \
+	a = vandq_u8(a, c63); \
+	c.a = vreinterpretq_u32_u8(a); \
+	c.a = veorq_u32(c.a, vshrq_n_u32(c.a, 6)); \
+} while (0)
+
+#ifdef __aarch64__
+#define CRZY64_DEC_NEON_ST() do { \
+	c.c = vqtbl1q_u8(c.c, idx); \
+	vst1q_lane_u64((uint64_t*)d, c.d, 0); \
+	vst1q_lane_u32((uint32_t*)d + 2, c.a, 2); \
+} while (0)
+#else
+#define CRZY64_DEC_NEON_ST() do { \
+	vst1_u8(d, vtbl2_u8(c.b, idx0)); \
+	vst1_lane_u32((uint32_t*)d + 2, \
+			vreinterpret_u32_u8(vtbl2_u8(c.b, idx1)), 0); \
+} while (0)
+#endif
+
+#if CRZY64_UNROLL > 1
+		while (n >= 32) {
+			uint8x16_t a1;
+			a = vld1q_u8(s); s += 16;
+			CRZY64_PREFETCH(s + 1024 < end ? s + 1024 : end);
+			CRZY64_DEC_NEON();
+			a1 = vld1q_u8(s); s += 16;
+			CRZY64_DEC_NEON_ST(); d += 12;
+			a = a1;
+			CRZY64_DEC_NEON();
+			CRZY64_DEC_NEON_ST(); d += 12;
+			n -= 32;
+		}
+		if (n >= 16) {
+			a = vld1q_u8(s);
+			CRZY64_DEC_NEON();
+			CRZY64_DEC_NEON_ST();
+			s += 16; n -= 16; d += 12;
+		}
+#else
 		do {
 			a = vld1q_u8(s);
 			CRZY64_PREFETCH(s + 1024 < end ? s + 1024 : end);
-			b = vandq_u8(vsubq_u8(a, c9), vcltq_u8(c63, a));
-			a = vaddq_u8(vaddq_u8(a, vshrq_n_u8(a, 5)), b);
-			a = vandq_u8(a, c63);
-			c.a = vreinterpretq_u32_u8(a);
-			c.a = veorq_u32(c.a, vshrq_n_u32(c.a, 6));
-#ifdef __aarch64__
-			c.c = vqtbl1q_u8(c.c, idx);
-			vst1q_lane_u64((uint64_t*)d, c.d, 0);
-			vst1q_lane_u32((uint32_t*)d + 2, c.a, 2);
-#else
-			vst1_u8(d, vtbl2_u8(c.b, idx0));
-			vst1_lane_u32((uint32_t*)d + 2,
-					vreinterpret_u32_u8(vtbl2_u8(c.b, idx1)), 0);
-#endif
+			CRZY64_DEC_NEON();
+			CRZY64_DEC_NEON_ST();
 			s += 16; n -= 16; d += 12;
 		} while (n >= 16);
+#endif
 #if 0 // worse
 		if (n) {
 			int32_t x;
@@ -512,57 +544,71 @@ size_t crzy64_decode(uint8_t *CRZY64_RESTRICT d,
 	a = _mm_xor_si128(a, _mm_srli_epi32(a, 6)); \
 } while (0)
 
-#if CRZY64_UNROLL > 1 && defined(__SSSE3__)
+#ifdef __SSE4_1__
+#define CRZY64_DEC_SSE2_ST() do { \
+	a = _mm_shuffle_epi8(a, idx); \
+	_mm_storel_epi64((__m128i*)d, a); \
+	*(uint32_t*)(d + 8) = _mm_extract_epi32(a, 2); \
+} while (0)
+#elif defined(__SSSE3__)
+#define CRZY64_DEC_SSE2_ST() do { \
+	a = _mm_shuffle_epi8(a, idx); \
+	_mm_storel_epi64((__m128i*)d, a); \
+	a = _mm_bsrli_si128(a, 8); \
+	*(uint32_t*)(d + 8) = _mm_cvtsi128_si32(a); \
+} while (0)
+#else
+#define CRZY64_DEC_SSE2_ST() do { \
+	b = _mm_andnot_si128(mask, _mm_bsrli_si128(a, 1)); \
+	a = _mm_or_si128(_mm_and_si128(a, mask), b); \
+	*(uint32_t*)d = _mm_cvtsi128_si32(a); \
+	b = _mm_bsrli_si128(a, 5); \
+	c = _mm_bsrli_si128(a, 10); \
+	*(uint32_t*)(d + 4) = _mm_cvtsi128_si32(b); \
+	*(uint32_t*)(d + 8) = _mm_cvtsi128_si32(c); \
+} while (0)
+#endif
+
+#ifdef __SSSE3__
+#define CRZY64_DEC_UNROLL_EXTRA 6
+#define CRZY64_DEC_SSE2_ST1() do { \
+	a = _mm_shuffle_epi8(a, idx); \
+	_mm_storeu_si128((__m128i*)d, a); \
+} while (0)
+#else
+#define CRZY64_DEC_UNROLL_EXTRA 0
+#define CRZY64_DEC_SSE2_ST1 CRZY64_DEC_SSE2_ST
+#endif
+
+#if CRZY64_UNROLL > 1
 		const uint8_t *end = s + n - 16; (void)end;
-		while (n >= 32 + 6) {
+		while (n >= 32 + CRZY64_DEC_UNROLL_EXTRA) {
 			__m128i a1;
 			a = _mm_loadu_si128((const __m128i*)s); s += 16;
 			CRZY64_PREFETCH(s + 1024 < end ? s + 1024 : end);
 			CRZY64_DEC_SSE2();
-			a = _mm_shuffle_epi8(a, idx);
 			a1 = _mm_loadu_si128((const __m128i*)s); s += 16;
-			_mm_storeu_si128((__m128i*)d, a); d += 12;
+			CRZY64_DEC_SSE2_ST1(); d += 12;
 			a = a1;
 			CRZY64_DEC_SSE2();
-			a = _mm_shuffle_epi8(a, idx);
-			_mm_storeu_si128((__m128i*)d, a); d += 12;
+			CRZY64_DEC_SSE2_ST1(); d += 12;
 			n -= 32;
 		}
+#ifdef CRZY64_DEC_UNROLL_EXTRA
 		while (n >= 16) {
+#else
+		if (n >= 16) {
+#endif
 			a = _mm_loadu_si128((const __m128i*)s);
 			CRZY64_DEC_SSE2();
-			a = _mm_shuffle_epi8(a, idx);
-			_mm_storel_epi64((__m128i*)d, a);
-#ifdef __SSE4_1__
-			*(uint32_t*)(d + 8) = _mm_extract_epi32(a, 2);
-#else
-			a = _mm_bsrli_si128(a, 8);
-			*(uint32_t*)(d + 8) = _mm_cvtsi128_si32(a);
-#endif
+			CRZY64_DEC_SSE2_ST();
 			s += 16; n -= 16; d += 12;
 		}
 #else
 		do {
 			a = _mm_loadu_si128((const __m128i*)s);
 			CRZY64_DEC_SSE2();
-#ifdef __SSSE3__
-			a = _mm_shuffle_epi8(a, idx);
-			_mm_storel_epi64((__m128i*)d, a);
-#ifdef __SSE4_1__
-			*(uint32_t*)(d + 8) = _mm_extract_epi32(a, 2);
-#else
-			a = _mm_bsrli_si128(a, 8);
-			*(uint32_t*)(d + 8) = _mm_cvtsi128_si32(a);
-#endif
-#else
-			b = _mm_andnot_si128(mask, _mm_bsrli_si128(a, 1));
-			a = _mm_or_si128(_mm_and_si128(a, mask), b);
-			*(uint32_t*)d = _mm_cvtsi128_si32(a);
-			b = _mm_bsrli_si128(a, 5);
-			c = _mm_bsrli_si128(a, 10);
-			*(uint32_t*)(d + 4) = _mm_cvtsi128_si32(b);
-			*(uint32_t*)(d + 8) = _mm_cvtsi128_si32(c);
-#endif
+			CRZY64_DEC_SSE2_ST();
 			s += 16; n -= 16; d += 12;
 		} while (n >= 16);
 #endif

@@ -87,8 +87,8 @@ int main(int argc, char **argv) {
 	}
 
 #ifdef TB32_BENCH
-  tb64ini(0, 0);
-  printf("TB64 simd (id = %x, \"%s\")\n", cpuini(0), cpustr(cpuini(0))); 
+	tb64ini(0, 0);
+	printf("TB64 simd (id = %x, \"%s\")\n", cpuini(0), cpustr(cpuini(0))); 
 #else
 	printf("vector: "
 #if CRZY64_VEC && CRZY64_NEON && defined(__aarch64__)
