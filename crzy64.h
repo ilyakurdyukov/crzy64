@@ -153,9 +153,8 @@ size_t crzy64_encode(uint8_t *CRZY64_RESTRICT d,
 
 #if CRZY64_VEC && CRZY64_NEON
 	if (n >= 12) {
-		uint8x16_t c5 = vdupq_n_u8(5), a, b, c;
-		uint8x16_t c52 = vdupq_n_u8(52), c71 = vdupq_n_u8(71);
-		uint8x16_t c63 = vdupq_n_u8(63), c6 = vdupq_n_u8(6);
+		uint8x16_t c52 = vdupq_n_u8(52), c5 = vdupq_n_u8(5), a, b, c;
+		uint8x16_t c63 = vdupq_n_u8(63), c140 = vdupq_n_u8(140);
 		uint8x8_t idx0 = vcreate_u8(0xff050403ff020100);
 #ifdef __aarch64__
 		uint8x8_t idx1 = vcreate_u8(0xff0b0a09ff080706);
@@ -193,10 +192,9 @@ size_t crzy64_encode(uint8_t *CRZY64_RESTRICT d,
 	/* core */ \
 	a = vandq_u8(vaddq_u8(a, c5), c63); \
 	b = vandq_u8(vshlq_n_u8(a, 5), c63); \
-	c = vsubq_u8(c71, vrshrq_n_u8(a, 1)); \
-	c = vaddq_u8(b, c); \
-	c = vandq_u8(c, vcltq_u8(a, c52)); \
-	a = vaddq_u8(vsubq_u8(a, c6), c); \
+	c = vaddq_u8(b, vhsubq_u8(c140, a)); \
+	c = vorrq_u8(c, vcleq_u8(c52, a)); \
+	a = vaddq_u8(vsubq_u8(a, c5), c); \
 } while (0)
 
 #if CRZY64_UNROLL > 1
@@ -251,9 +249,9 @@ size_t crzy64_encode(uint8_t *CRZY64_RESTRICT d,
 			a = _mm256_xor_si256(a, _mm256_srli_epi32(c, 12));
 			a = _mm256_xor_si256(a, _mm256_slli_epi32(b, 6));
 			/* core */
+			b = _mm256_andnot_si256(a, c1);
 			a = _mm256_and_si256(_mm256_add_epi8(a, c5), c63);
-			b = _mm256_and_si256(a, c1);
-			c = _mm256_add_epi8(_mm256_slli_epi16(b, 5), c74);
+			c = _mm256_xor_si256(_mm256_slli_epi16(b, 5), c74);
 			c = _mm256_sub_epi8(c, _mm256_avg_epu8(a, c6));
 			c = _mm256_and_si256(c, _mm256_cmpgt_epi8(c52, a));
 			a = _mm256_add_epi8(_mm256_sub_epi8(a, c6), c);
@@ -302,9 +300,9 @@ size_t crzy64_encode(uint8_t *CRZY64_RESTRICT d,
 			a = _mm_xor_si128(a, _mm_srli_epi32(c, 12));
 			a = _mm_xor_si128(a, _mm_slli_epi32(b, 6));
 			/* core */
+			b = _mm_andnot_si128(a, c1);
 			a = _mm_and_si128(_mm_add_epi8(a, c5), c63);
-			b = _mm_and_si128(a, c1);
-			c = _mm_add_epi8(_mm_slli_epi16(b, 5), c74);
+			c = _mm_xor_si128(_mm_slli_epi16(b, 5), c74);
 			c = _mm_sub_epi8(c, _mm_avg_epu8(a, c6));
 			c = _mm_and_si128(c, _mm_cmpgt_epi8(c52, a));
 			a = _mm_add_epi8(_mm_sub_epi8(a, c6), c);
