@@ -228,7 +228,7 @@ size_t crzy64_encode(uint8_t *CRZY64_RESTRICT d,
 #elif CRZY64_VEC && defined(__AVX2__)
 	if (n >= 24) {
 		__m256i c1 = _mm256_set1_epi8(1), c5 = _mm256_set1_epi8(5);
-		__m256i c52 = _mm256_set1_epi8(52), c74 = _mm256_set1_epi8(74);
+		__m256i c52 = _mm256_set1_epi8(52), cm103 = _mm256_set1_epi8(-103);
 		__m256i c63 = _mm256_set1_epi8(63), c6 = _mm256_set1_epi8(6), a, b, c;
 		__m256i ml = _mm256_set1_epi32(0x030f3f);
 		__m256i idx = _mm256_setr_epi8(
@@ -249,12 +249,11 @@ size_t crzy64_encode(uint8_t *CRZY64_RESTRICT d,
 			a = _mm256_xor_si256(a, _mm256_srli_epi32(c, 12));
 			a = _mm256_xor_si256(a, _mm256_slli_epi32(b, 6));
 			/* core */
-			b = _mm256_andnot_si256(a, c1);
+			b = _mm256_slli_epi16(_mm256_and_si256(a, c1), 6);
 			a = _mm256_and_si256(_mm256_add_epi8(a, c5), c63);
-			c = _mm256_xor_si256(_mm256_slli_epi16(b, 5), c74);
-			c = _mm256_sub_epi8(c, _mm256_avg_epu8(a, c6));
+			c = _mm256_add_epi8(_mm256_avg_epu8(a, b), cm103);
 			c = _mm256_and_si256(c, _mm256_cmpgt_epi8(c52, a));
-			a = _mm256_add_epi8(_mm256_sub_epi8(a, c6), c);
+			a = _mm256_sub_epi8(_mm256_sub_epi8(a, c6), c);
 			_mm256_storeu_si256((__m256i*)d, a);
 			s += 24; n -= 24; d += 32;
 		} while (n >= 24);
@@ -262,7 +261,7 @@ size_t crzy64_encode(uint8_t *CRZY64_RESTRICT d,
 #elif CRZY64_VEC && defined(__SSE2__)
 	if (n >= 12) {
 		__m128i c1 = _mm_set1_epi8(1), c5 = _mm_set1_epi8(5);
-		__m128i c52 = _mm_set1_epi8(52), c74 = _mm_set1_epi8(74);
+		__m128i c52 = _mm_set1_epi8(52), cm103 = _mm_set1_epi8(-103);
 		__m128i c63 = _mm_set1_epi8(63), c6 = _mm_set1_epi8(6), a, b, c;
 #ifdef __SSSE3__
 		__m128i idx = _mm_setr_epi8(0, 1, 2, -1, 3, 4, 5, -1, 6, 7, 8, -1, 9, 10, 11, -1);
@@ -300,12 +299,11 @@ size_t crzy64_encode(uint8_t *CRZY64_RESTRICT d,
 			a = _mm_xor_si128(a, _mm_srli_epi32(c, 12));
 			a = _mm_xor_si128(a, _mm_slli_epi32(b, 6));
 			/* core */
-			b = _mm_andnot_si128(a, c1);
+			b = _mm_slli_epi16(_mm_and_si128(a, c1), 6);
 			a = _mm_and_si128(_mm_add_epi8(a, c5), c63);
-			c = _mm_xor_si128(_mm_slli_epi16(b, 5), c74);
-			c = _mm_sub_epi8(c, _mm_avg_epu8(a, c6));
+			c = _mm_add_epi8(_mm_avg_epu8(a, b), cm103);
 			c = _mm_and_si128(c, _mm_cmpgt_epi8(c52, a));
-			a = _mm_add_epi8(_mm_sub_epi8(a, c6), c);
+			a = _mm_sub_epi8(_mm_sub_epi8(a, c6), c);
 			_mm_storeu_si128((__m128i*)d, a);
 			s += 12; n -= 12; d += 16;
 		} while (n >= 12);
