@@ -113,25 +113,31 @@
 
 /* 24 -> 6x4 */
 static inline uint32_t crzy64_unpack(uint32_t a) {
-	uint32_t ah, al, b;
-	ah = a & 0xfcf0c0;
-	al = a & 0x030f3f;
-	b  = ah <<  6 ^ al;
-	b ^= ah << 12 ^ al >> 6;
-	b ^= ah << 18 ^ al >> 12;
-	return b & 0x3f3f3f3f;
+	uint32_t b = a << 6, m;
+	b &= m = 0xfcf0c0 << 6;
+	a &=     0x030f3f;
+	b = b ^ b << 6 ^ b << 12;
+	a = a ^ a >> 6 ^ a >> 12;
+	return a ^ (b & m);
 }
 
 #if CRZY64_FAST64
 /* 24x2 -> 6x8 */
 static inline uint64_t crzy64_unpack64(uint64_t a) {
 	// return crzy64_unpack(a) | (uint64_t)crzy64_unpack(a >> 32) << 32;
-	uint64_t h, l, m = ~0xff000000llu;
-	h = a & 0xfcf0c000fcf0c0;
-	l = a & 0x030f3f00030f3f;
-	h = (((h << 6 & m) ^ h) << 6 & m) ^ h;
-	l = (((l >> 6 & m) ^ l) >> 6 & m) ^ l;
-	return (l ^ h << 6) & 0x3f3f3f3f3f3f3f3f;
+#if defined(CRZY64_E2K_LCC) && __iset__ >= 6
+	uint64_t b, m = 0x3ffff0003ffff000;
+	b = __builtin_e2k_clmull(a & 0xfcf0c000fcf0c0, 0x1041 << 6) & m;
+	a = __builtin_e2k_clmull(a & 0x030f3f00030f3f, 0x1041) & m;
+	return a >> 12 ^ b;
+#else
+	uint64_t b = a << 6, h, l;
+	b &= h = 0xfcf0c000fcf0c0 << 6;
+	a &= l = 0x030f3f00030f3f;
+	b = (b ^ b << 6 ^ b << 12) & h;
+	a = (a ^ a >> 6 ^ a >> 12) & l;
+	return a ^ b;
+#endif
 }
 #endif
 
@@ -145,6 +151,18 @@ static inline uint64_t crzy64_unpack64(uint64_t a) {
 	c = R(127) + (((a + R(12)) >> 6) & R(1)); \
 	a += (((b << 5) + R(71) - ((a + b) >> 1)) & c) - R(6); \
 } while (0)
+#define CRZY64_ENC4() CRZY64_ENC(CRZY64_REP4)
+#ifdef CRZY64_E2K_LCC
+#define CRZY64_ENC_E2K(R) do { \
+	a = (a + R(5)) & R(63); \
+	b = a & R(1); \
+	c = __builtin_e2k_pcmpgtb(R(52), a); \
+	a += (((b << 5) + R(71) - ((a + b) >> 1)) & c) - R(6); \
+} while (0)
+#define CRZY64_ENC8() CRZY64_ENC_E2K(CRZY64_REP8)
+#else
+#define CRZY64_ENC8() CRZY64_ENC(CRZY64_REP8)
+#endif
 
 CRZY64_ATTR
 size_t crzy64_encode(uint8_t *CRZY64_RESTRICT d,
@@ -320,7 +338,7 @@ size_t crzy64_encode(uint8_t *CRZY64_RESTRICT d,
 		a |= (uint64_t)(s[3] | s[4] << 8 | s[5] << 16) << 32;
 #endif
 		a = crzy64_unpack64(a);
-		CRZY64_ENC(CRZY64_REP8);
+		CRZY64_ENC8();
 #if CRZY64_UNALIGNED
 		*(uint64_t*)d = a;
 #else
@@ -341,7 +359,7 @@ size_t crzy64_encode(uint8_t *CRZY64_RESTRICT d,
 	if (n >= 3) do {
 		a = s[0] | s[1] << 8 | s[2] << 16;
 		a = crzy64_unpack(a);
-		CRZY64_ENC(CRZY64_REP4);
+		CRZY64_ENC4();
 #if CRZY64_UNALIGNED
 		*(uint32_t*)d = a;
 #else
@@ -357,7 +375,7 @@ size_t crzy64_encode(uint8_t *CRZY64_RESTRICT d,
 		a = s[0];
 		if (n > 1) a |= s[1] << 8;
 		a = crzy64_unpack(a);
-		CRZY64_ENC(CRZY64_REP4);
+		CRZY64_ENC4();
 		d[0] = a;
 		d[1] = a >> 8;
 		if (n > 1) d[2] = a >> 16;
@@ -370,7 +388,13 @@ size_t crzy64_encode(uint8_t *CRZY64_RESTRICT d,
 #define CRZY64_DEC(a, R) (((((a) >> 5) & R(3)) + \
 	(a) + (((a) - R(9)) & (R(64) - (((a) >> 6) & R(1))))) & R(63))
 #define CRZY64_DEC4(a) CRZY64_DEC(a, CRZY64_REP4)
+#ifdef CRZY64_E2K_LCC
+#define CRZY64_DEC_E2K(a, R) (((((a) >> 5) & R(3)) + \
+	(a) + (((a) - R(9)) & __builtin_e2k_pcmpgtb((a), R(63)))) & R(63))
+#define CRZY64_DEC8(a) CRZY64_DEC_E2K(a, CRZY64_REP8)
+#else
 #define CRZY64_DEC8(a) CRZY64_DEC(a, CRZY64_REP8)
+#endif
 #define CRZY64_PACK(a) ((a) ^ (a) >> 6)
 
 CRZY64_ATTR
