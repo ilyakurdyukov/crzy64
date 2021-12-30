@@ -34,25 +34,23 @@
 
 /* 24 -> 6x4 */
 static inline uint32_t crzy64_unpack(uint32_t a) {
-	uint32_t b;
-	b = a & 0xfcf0c0;
-	a = a & 0x030f3f;
+	uint32_t b = a << 6, m;
+	b &= m = 0xfcf0c0 << 6;
+	a &=     0x030f3f;
 	b = b ^ b << 6 ^ b << 12;
 	a = a ^ a >> 6 ^ a >> 12;
-	return (a ^ b << 6) & 0x3f3f3f3f;
+	return a ^ (b & m);
 }
 
 #define CRZY64_ENC(R) do { \
-	a = (a + R * 5) & R * 63; \
-	b = a & R * 1; \
-	c = R * 127 + (((a + R * 12) >> 6) & R * 1); \
-	a += (((b << 5) + R * 71 - ((a + b) >> 1)) & c) - R * 6; \
+	b = R * 64 - ((a + R * 52) >> 6 & R); \
+	c = R * 64 - ((a + R * 26) >> 6 & R); \
+	a += R * 46 + (b & R * 7) + (c & R * 6); \
 } while (0)
 #define CRZY64_ENC4() CRZY64_ENC(0x01010101)
 
 size_t crzy64_encode(uint8_t *d, const uint8_t *s, size_t n) {
-	uint8_t *d0 = d;
-	uint32_t a, b, c;
+	uint8_t *d0 = d; uint32_t a, b, c;
 
 	while (n >= 3) {
 		a = s[0] | s[1] << 8 | s[2] << 16;
@@ -79,17 +77,18 @@ size_t crzy64_encode(uint8_t *d, const uint8_t *s, size_t n) {
 	return d - d0;
 }
 
-#define CRZY64_DEC(a, R) (((((a) >> 5) & R * 3) + \
-	(a) + (((a) - R * 9) & (R * 64 - (((a) >> 6) & R * 1)))) & R * 63)
-#define CRZY64_DEC4(a) CRZY64_DEC(a, 0x01010101)
+#define CRZY64_DEC(a, b, R) (b = (a) & R * 96, (a) - R * 59 \
+	+ ((R * 7 + ((b) >> 6)) & R * 7) \
+	+ ((R * 5 + ((b) >> 5)) & R * 6))
+#define CRZY64_DEC4(a, b) CRZY64_DEC(a, b, 0x01010101)
 #define CRZY64_PACK(a) ((a) ^ (a) >> 6)
 
 size_t crzy64_decode(uint8_t *d, const uint8_t *s, size_t n) {
-	uint8_t *d0 = d;
+	uint8_t *d0 = d; uint32_t a, b;
 
 	while (n >= 4) {
-		uint32_t a = s[0] | s[1] << 8 | s[2] << 16 | s[3] << 24;
-		a = CRZY64_DEC4(a);
+		a = s[0] | s[1] << 8 | s[2] << 16 | s[3] << 24;
+		a = CRZY64_DEC4(a, b);
 		a = CRZY64_PACK(a);
 		d[0] = a;
 		d[1] = a >> 8;
@@ -98,9 +97,9 @@ size_t crzy64_decode(uint8_t *d, const uint8_t *s, size_t n) {
 	}
 
 	if (n > 1) {
-		uint32_t a = s[0] | s[1] << 8;
+		a = s[0] | s[1] << 8;
 		if (n > 2) a |= s[2] << 16;
-		a = CRZY64_DEC4(a);
+		a = CRZY64_DEC4(a, b);
 		a = CRZY64_PACK(a);
 		d[0] = a;
 		if (n > 2) d[1] = a >> 8;
