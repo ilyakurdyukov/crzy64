@@ -42,10 +42,20 @@ static inline uint32_t crzy64_unpack(uint32_t a) {
 	return a ^ (b & m);
 }
 
+#if CRZY64_AT
+#define CRZY64_C0 47
+#define CRZY64_C1 6
+#define CRZY64_C2 53
+#else
+#define CRZY64_C0 46
+#define CRZY64_C1 7
+#define CRZY64_C2 52
+#endif
+
 #define CRZY64_ENC(R) do { \
-	b = R * 64 - ((a + R * 52) >> 6 & R); \
+	b = R * 64 - ((a + R * CRZY64_C2) >> 6 & R); \
 	c = R * 64 - ((a + R * 26) >> 6 & R); \
-	a += R * 46 + (b & R * 7) + (c & R * 6); \
+	a += R * CRZY64_C0 + (b & R * CRZY64_C1) + (c & R * 6); \
 } while (0)
 #define CRZY64_ENC4() CRZY64_ENC(0x01010101)
 
@@ -78,7 +88,7 @@ size_t crzy64_encode(uint8_t *d, const uint8_t *s, size_t n) {
 }
 
 #define CRZY64_DEC(a, b, R) (b = (a) & R * 96, (a) - R * 59 \
-	+ ((R * 7 + ((b) >> 6)) & R * 7) \
+	+ ((R * 7 + ((b) >> 6)) & R * CRZY64_C1) \
 	+ ((R * 5 + ((b) >> 5)) & R * 6))
 #define CRZY64_DEC4(a, b) CRZY64_DEC(a, b, 0x01010101)
 #define CRZY64_PACK(a) ((a) ^ (a) >> 6)

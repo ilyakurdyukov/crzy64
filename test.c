@@ -12,7 +12,12 @@
 int main() {
 	static const uint8_t set[64] = {
 		"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef"
-		"ghijklmnopqrstuvwxyz0123456789./"
+		"ghijklmnopqrstuvwxyz0123456789"
+#if CRZY64_AT
+		"@/"
+#else
+		"./"
+#endif
 	};
 	uint8_t src[N * 3];
 	size_t n; unsigned i, j;
