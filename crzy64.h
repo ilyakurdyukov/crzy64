@@ -574,29 +574,41 @@ size_t crzy64_decode(uint8_t *CRZY64_RESTRICT d,
 		__m256i mask = _mm256_cmpgt_epi32(idx, c3);
 		const uint8_t *end = s + n - 32; (void)end;
 
-#define CRZY64_DEC_AVX2() do { \
-	b = _mm256_and_si256(_mm256_srli_epi16(a, 5), c3); \
-	a = _mm256_add_epi8(a, _mm256_shuffle_epi8(tab, b)); \
-	a = _mm256_xor_si256(a, _mm256_srli_epi32(a, 6)); \
-	a = _mm256_shuffle_epi8(a, idx); \
-} while (0)
+#define CRZY64_DEC_AVX2(a) ( \
+	b = _mm256_and_si256(_mm256_srli_epi16(a, 5), c3), \
+	a = _mm256_add_epi8(a, _mm256_shuffle_epi8(tab, b)), \
+	a = _mm256_xor_si256(a, _mm256_srli_epi32(a, 6)), \
+	_mm256_shuffle_epi8(a, idx))
 
-#if CRZY64_UNROLL > 1
-		while (n >= 64) {
+#if CRZY64_UNROLL > 1 && CRZY64_UNROLL <= 4
+		while (n >= 32 * CRZY64_UNROLL) {
 			__m256i a1;
 			a = _mm256_loadu_si256((const __m256i*)s); s += 32;
 			CRZY64_PREFETCH(s + 1024 < end ? s + 1024 : end);
-			CRZY64_DEC_AVX2();
+			a = CRZY64_DEC_AVX2(a);
+#if CRZY64_UNROLL > 2
 			a1 = _mm256_loadu_si256((const __m256i*)s); s += 32;
 			_mm256_maskstore_epi32((int32_t*)d - 1, mask, a); d += 24;
-			a = a1;
-			CRZY64_DEC_AVX2();
+			a = CRZY64_DEC_AVX2(a1);
+#endif
+#if CRZY64_UNROLL > 3
+			a1 = _mm256_loadu_si256((const __m256i*)s); s += 32;
 			_mm256_maskstore_epi32((int32_t*)d - 1, mask, a); d += 24;
-			n -= 64;
+			a = CRZY64_DEC_AVX2(a1);
+#endif
+			a1 = _mm256_loadu_si256((const __m256i*)s); s += 32;
+			_mm256_maskstore_epi32((int32_t*)d - 1, mask, a); d += 24;
+			a = CRZY64_DEC_AVX2(a1);
+			_mm256_maskstore_epi32((int32_t*)d - 1, mask, a); d += 24;
+			n -= 32 * CRZY64_UNROLL;
 		}
+#if CRZY64_UNROLL == 2
 		if (n >= 32) {
+#else
+		while (n >= 32) {
+#endif
 			a = _mm256_loadu_si256((const __m256i*)s);
-			CRZY64_DEC_AVX2();
+			a = CRZY64_DEC_AVX2(a);
 			_mm256_maskstore_epi32((int32_t*)d - 1, mask, a);
 			s += 32; n -= 32; d += 24;
 		}
@@ -604,7 +616,7 @@ size_t crzy64_decode(uint8_t *CRZY64_RESTRICT d,
 		do {
 			a = _mm256_loadu_si256((const __m256i*)s);
 			CRZY64_PREFETCH(s + 1024 < end ? s + 1024 : end);
-			CRZY64_DEC_AVX2();
+			a = CRZY64_DEC_AVX2(a);
 			_mm256_maskstore_epi32((int32_t*)d - 1, mask, a);
 			s += 32; n -= 32; d += 24;
 		} while (n >= 32);
@@ -622,7 +634,7 @@ size_t crzy64_decode(uint8_t *CRZY64_RESTRICT d,
 			a1 = _mm_shuffle_epi8(a1, b1);
 			a = _mm256_castsi128_si256(c1);
 			a = _mm256_inserti128_si256(a, a1, 1);
-			CRZY64_DEC_AVX2();
+			a = CRZY64_DEC_AVX2(a);
 			c1 = _mm256_castsi256_si128(a);
 			b1 = _mm256_castsi256_si128(mask);
 			a1 = _mm256_extracti128_si256(a, 1);
@@ -639,53 +651,57 @@ size_t crzy64_decode(uint8_t *CRZY64_RESTRICT d,
 	}
 #elif CRZY64_VEC && defined(__SSE2__)
 	if (n >= 16) {
+#ifdef __SSSE3__
 		__m128i c3 = _mm_set1_epi8(3), a, b;
 		__m128i tab = _mm_set1_epi32(0xc5cbd200);
-#ifdef __SSSE3__
 		__m128i idx = _mm_setr_epi8(0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14, -1, -1, -1, -1);
-#else
-		/* xx0001x0011x0111 */
-		__m128i mask = _mm_setr_epi32(0xffffff, 0xffffff, 0xff0000, 0);
-#endif
 
-#define CRZY64_DEC_SSE2() do { \
-	b = _mm_and_si128(_mm_srli_epi16(a, 5), c3); \
-	a = _mm_add_epi8(a, _mm_shuffle_epi8(tab, b)); \
-	a = _mm_xor_si128(a, _mm_srli_epi32(a, 6)); \
-} while (0)
+#define CRZY64_DEC_SSE2(a) ( \
+	b = _mm_and_si128(_mm_srli_epi16(a, 5), c3), \
+	a = _mm_add_epi8(a, _mm_shuffle_epi8(tab, b)), \
+	_mm_xor_si128(a, _mm_srli_epi32(a, 6)))
 
 #ifdef __SSE4_1__
-#define CRZY64_DEC_SSE2_ST() do { \
+#define CRZY64_DEC_SSE2_ST(a) do { \
 	a = _mm_shuffle_epi8(a, idx); \
 	_mm_storel_epi64((__m128i*)d, a); \
 	*(uint32_t*)(d + 8) = _mm_extract_epi32(a, 2); \
 } while (0)
-#elif defined(__SSSE3__)
-#define CRZY64_DEC_SSE2_ST() do { \
+#else
+#define CRZY64_DEC_SSE2_ST(a) do { \
 	a = _mm_shuffle_epi8(a, idx); \
 	_mm_storel_epi64((__m128i*)d, a); \
 	a = _mm_bsrli_si128(a, 8); \
 	*(uint32_t*)(d + 8) = _mm_cvtsi128_si32(a); \
 } while (0)
-#else
-#define CRZY64_DEC_SSE2_ST() do { \
-	b = _mm_andnot_si128(mask, _mm_bsrli_si128(a, 1)); \
-	a = _mm_or_si128(_mm_and_si128(a, mask), b); \
-	*(uint32_t*)d = _mm_cvtsi128_si32(a); \
-	b = _mm_bsrli_si128(a, 5); \
-	c = _mm_bsrli_si128(a, 10); \
-	*(uint32_t*)(d + 4) = _mm_cvtsi128_si32(b); \
-	*(uint32_t*)(d + 8) = _mm_cvtsi128_si32(c); \
-} while (0)
 #endif
-
-#ifdef __SSSE3__
 #define CRZY64_DEC_UNROLL_EXTRA 6
-#define CRZY64_DEC_SSE2_ST1() do { \
+#define CRZY64_DEC_SSE2_ST1(a) do { \
 	a = _mm_shuffle_epi8(a, idx); \
 	_mm_storeu_si128((__m128i*)d, a); \
 } while (0)
 #else
+		__m128i c59 = _mm_set1_epi8(59), a, b;
+		__m128i c6 = _mm_set1_epi8(6), c7 = _mm_set1_epi8(7);
+		__m128i c64 = _mm_set1_epi8(64), c96 = _mm_set1_epi8(96);
+		/* xx0001x0011x0111 */
+		__m128i mask = _mm_setr_epi32(0xffffff, 0xffffff, 0xff0000, 0);
+
+#define CRZY64_DEC_SSE2(a) ( \
+	b = _mm_and_si128(_mm_cmpgt_epi8(c64, a), c7), \
+	a = _mm_add_epi8(_mm_add_epi8(b, _mm_sub_epi8(a, c59)), \
+	_mm_and_si128(_mm_cmpgt_epi8(c96, a), c6)), \
+	_mm_xor_si128(a, _mm_srli_epi32(a, 6)))
+
+#define CRZY64_DEC_SSE2_ST(a) do { \
+	b = _mm_andnot_si128(mask, _mm_bsrli_si128(a, 1)); \
+	a = _mm_or_si128(_mm_and_si128(a, mask), b); \
+	*(uint32_t*)d = _mm_cvtsi128_si32(a); \
+	b = _mm_bsrli_si128(a, 5); \
+	a = _mm_bsrli_si128(a, 10); \
+	*(uint32_t*)(d + 4) = _mm_cvtsi128_si32(b); \
+	*(uint32_t*)(d + 8) = _mm_cvtsi128_si32(a); \
+} while (0)
 #define CRZY64_DEC_UNROLL_EXTRA 0
 #define CRZY64_DEC_SSE2_ST1 CRZY64_DEC_SSE2_ST
 #endif
@@ -696,12 +712,11 @@ size_t crzy64_decode(uint8_t *CRZY64_RESTRICT d,
 			__m128i a1;
 			a = _mm_loadu_si128((const __m128i*)s); s += 16;
 			CRZY64_PREFETCH(s + 1024 < end ? s + 1024 : end);
-			CRZY64_DEC_SSE2();
+			a = CRZY64_DEC_SSE2(a);
 			a1 = _mm_loadu_si128((const __m128i*)s); s += 16;
-			CRZY64_DEC_SSE2_ST1(); d += 12;
-			a = a1;
-			CRZY64_DEC_SSE2();
-			CRZY64_DEC_SSE2_ST1(); d += 12;
+			CRZY64_DEC_SSE2_ST1(a); d += 12;
+			a = CRZY64_DEC_SSE2(a1);
+			CRZY64_DEC_SSE2_ST1(a); d += 12;
 			n -= 32;
 		}
 #ifdef CRZY64_DEC_UNROLL_EXTRA
@@ -710,15 +725,15 @@ size_t crzy64_decode(uint8_t *CRZY64_RESTRICT d,
 		if (n >= 16) {
 #endif
 			a = _mm_loadu_si128((const __m128i*)s);
-			CRZY64_DEC_SSE2();
-			CRZY64_DEC_SSE2_ST();
+			a = CRZY64_DEC_SSE2(a);
+			CRZY64_DEC_SSE2_ST(a);
 			s += 16; n -= 16; d += 12;
 		}
 #else
 		do {
 			a = _mm_loadu_si128((const __m128i*)s);
-			CRZY64_DEC_SSE2();
-			CRZY64_DEC_SSE2_ST();
+			a = CRZY64_DEC_SSE2(a);
+			CRZY64_DEC_SSE2_ST(a);
 			s += 16; n -= 16; d += 12;
 		} while (n >= 16);
 #endif
@@ -732,7 +747,7 @@ size_t crzy64_decode(uint8_t *CRZY64_RESTRICT d,
 			d += (n >> 2) * 3; n &= 3;
 			b = _mm_sub_epi8(b, _mm_set1_epi8(n));
 			a = _mm_shuffle_epi8(a, b);
-			CRZY64_DEC_SSE2();
+			a = CRZY64_DEC_SSE2(a);
 			a = _mm_shuffle_epi8(a, idx);
 			_mm_storel_epi64((__m128i*)(d - 9), a);
 #ifdef __SSE4_1__

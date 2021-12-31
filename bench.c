@@ -9,9 +9,11 @@
 #ifdef __AVX2__
 #define crzy64_encode(d, s, n) tb64avx2enc(s, n, d)
 #define crzy64_decode(d, s, n) tb64avx2dec(s, n, d)
+#define TB32_NAME "tb64avx2"
 #else
 #define crzy64_encode(d, s, n) tb64sseenc(s, n, d)
 #define crzy64_decode(d, s, n) tb64ssedec(s, n, d)
+#define TB32_NAME "tb64sse"
 #endif
 #else
 #include "crzy64.h"
@@ -87,8 +89,7 @@ int main(int argc, char **argv) {
 	}
 
 #ifdef TB32_BENCH
-	tb64ini(0, 0);
-	printf("TB64 simd (id = %x, \"%s\")\n", cpuini(0), cpustr(cpuini(0))); 
+	printf("TB64: %s\n", TB32_NAME); 
 #else
 	printf("vector: "
 #if CRZY64_VEC && CRZY64_NEON && defined(__aarch64__)
