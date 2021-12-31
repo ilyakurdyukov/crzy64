@@ -226,20 +226,19 @@ size_t crzy64_encode(uint8_t *CRZY64_RESTRICT d,
 		uint8x16_t c3 = vdupq_n_u8(3), c15 = vdupq_n_u8(15);
 		while (n >= 48) {
 			uint8x16x3_t q0 = vld3q_u8(s);
-			uint8x16x4_t q1;
+			uint8x16x4_t q1; uint8x16_t u, v;
 
 			CRZY64_PREFETCH(s + 1024 < end ? s + 1024 : end);
-			a = vandq_u8(vshlq_n_u8(q0.val[2], 2), c15);
-			b = vbicq_u8(vshrq_n_u8(q0.val[0], 2), c15);
-			c = veorq_u8(q0.val[1], veorq_u8(a, b));
-			a = vshlq_n_u8(vandq_u8(c, c15), 2);
-			b = vshrq_n_u8(vbicq_u8(c, c15), 2);
-			a = veorq_u8(q0.val[0], a);
-			b = veorq_u8(q0.val[2], b);
+			u = vshrq_n_u8(q0.val[0], 2);
+			v = vshlq_n_u8(q0.val[2], 2);
+			c = veorq_u8(q0.val[1], vbslq_u8(c15, v, u));
+			v = vshrq_n_u8(c, 2);
+			a = veorq_u8(q0.val[0], vshlq_n_u8(c, 2));
+			b = veorq_u8(q0.val[2], v);
 
 			q1.val[0] = vandq_u8(a, c63);
-			q1.val[1] = vbslq_u8(c15, c, vshrq_n_u8(a, 2));
-			q1.val[2] = vbslq_u8(c3, b, vshrq_n_u8(c, 2));
+			q1.val[1] = vbslq_u8(c15, c, u);
+			q1.val[2] = vbslq_u8(c3, q0.val[2], v);
 			q1.val[3] = vshrq_n_u8(b, 2);
 
 #define CRZY64_ENC_T(a) do { \
