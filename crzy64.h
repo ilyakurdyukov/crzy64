@@ -242,7 +242,6 @@ size_t crzy64_encode(uint8_t *CRZY64_RESTRICT d,
 			q1.val[3] = vshrq_n_u8(b, 2);
 
 #define CRZY64_ENC_T(a) do { \
-	a = vandq_u8(a, c63); \
 	b = vsraq_n_u8(a, vcltq_u8(c11, a), 5); \
 	c = vbslq_u8(vcltq_u8(c37, a), c52, c46); \
 	a = vaddq_u8(b, c); \
