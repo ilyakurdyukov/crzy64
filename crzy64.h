@@ -74,8 +74,20 @@
 #endif
 #endif
 
+#ifndef CRZY64_INLINE
+#ifdef __GNUC__
+#define CRZY64_INLINE __inline__
+#else
+#define CRZY64_INLINE inline
+#endif
+#endif
+
 #ifndef CRZY64_RESTRICT
+#ifdef __GNUC__
+#define CRZY64_RESTRICT __restrict__
+#else
 #define CRZY64_RESTRICT restrict
+#endif
 #endif
 
 #ifndef CRZY64_PREFETCH
@@ -120,7 +132,7 @@
 #endif
 
 /* 24 -> 6x4 */
-static inline uint32_t crzy64_unpack(uint32_t a) {
+static CRZY64_INLINE uint32_t crzy64_unpack(uint32_t a) {
 	uint32_t b = a << 6, m;
 	b &= m = 0xfcf0c0 << 6;
 	a &=     0x030f3f;
@@ -131,8 +143,8 @@ static inline uint32_t crzy64_unpack(uint32_t a) {
 
 #if CRZY64_FAST64
 /* 24x2 -> 6x8 */
-static inline uint64_t crzy64_unpack64(uint64_t a) {
-	// return crzy64_unpack(a) | (uint64_t)crzy64_unpack(a >> 32) << 32;
+static CRZY64_INLINE uint64_t crzy64_unpack64(uint64_t a) {
+	/* return crzy64_unpack(a) | (uint64_t)crzy64_unpack(a >> 32) << 32; */
 #if defined(CRZY64_E2K_LCC) && __iset__ >= 6
 	uint64_t b, m = 0x3ffff0003ffff000;
 	b = __builtin_e2k_clmull(a & 0xfcf0c000fcf0c0, 0x1041 << 6) & m;
@@ -914,4 +926,4 @@ size_t crzy64_decode(uint8_t *CRZY64_RESTRICT d,
 	return d - d0;
 }
 
-#endif // CRZY64_H
+#endif /* CRZY64_H */

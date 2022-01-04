@@ -7,7 +7,8 @@ typedef struct {
 	FILE *f;
 } svg_writer_t;
 
-static int svg_start(svg_writer_t *s, const char *fn, float mul, const char *unit) {
+static int svg_start(svg_writer_t *s, const char *fn,
+		float mul, const char *unit) {
 	FILE *f; int i;
 	s->w = s->x0 + s->nx * s->xm + s->x1;
 	s->h = s->y0 + s->ny * s->ym + s->y1;

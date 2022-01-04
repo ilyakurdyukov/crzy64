@@ -23,4 +23,5 @@ int main(int argc, char **argv) {
 			fwrite(out, 1, crzy64_encode(out, buf, n), stdout);
 		} while (n == N * 3);
 	}
+	return 0;
 }

@@ -10,7 +10,7 @@
 #define GUARD_SIZE 8
 
 int main() {
-	static const uint8_t set[64] = {
+	static const uint8_t set[] = {
 		"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef"
 		"ghijklmnopqrstuvwxyz0123456789"
 #if CRZY64_AT
@@ -64,4 +64,5 @@ int main() {
 		if (memcmp(src, out, i))
 			ERR("doesn't match the source");
 	}
+	return 0;
 }

@@ -67,8 +67,8 @@ static void write_svg(const char *base, const char *name,
 		float (*results)[21], float max) {
 	svg_writer_t svg = {
 		20, 10,
-		100, 50, 50, // x
-		100, 50, 70, // y
+		100, 50, 50, /* x */
+		100, 50, 70, /* y */
 		0, 0, NULL
 	};
 	int i, j;
@@ -77,12 +77,12 @@ static void write_svg(const char *base, const char *name,
 	const char *unit = "KB/s";
 
 	int n = strlen(base);
-	char *buf = malloc(n + strlen(name) + 1);
+	char *buf = (char*)malloc(n + strlen(name) + 1);
 	if (!buf) return;
 	strcpy(buf, base);
 	strcpy(buf + n, name);
 
-	// skip memcpy
+	/* skip memcpy */
 	if (max == 0)
 	for (j = 1; j < 3; j++)
 	for (i = 0; i <= 20; i++)
@@ -95,7 +95,8 @@ static void write_svg(const char *base, const char *name,
 	i = 1 << i;
 	mul = 1024.0f / i;
 	j = svg.ym * svg.ny;
-	svg.ny = ceilf(max * mul);
+	/* svg.ny = ceilf(max * mul); */
+	svg.ny = 65536 - (int)(65536 - max * mul);
 	svg.ym = j / svg.ny;
 	if (i >= 1024) i >>= 10, unit = "MB/s";
 	if (i >= 1024) i >>= 10, unit = "GB/s";
@@ -187,7 +188,7 @@ int main(int argc, char **argv) {
 	nlimit = n1 / nlimit;
 	if (nlimit < 1) nlimit = 1;
 
-	if (!(buf = malloc(n1 + n2 + 1))) return 1;
+	if (!(buf = (uint8_t*)malloc(n1 + n2 + 1))) return 1;
 	out = buf + n1;
 	for (i = 0; i < n1 + n2; i++) buf[i] = i ^ 0x55;
 
@@ -272,4 +273,6 @@ int main(int argc, char **argv) {
 
 	printf("\nblock repeat (random order):\n");
 	BENCH_BLOCK("random")
+
+	return 0;
 }
